@@ -23,6 +23,21 @@ https://tailscale.com
 
 TailscaleReadMe.md file is also included in this package.
 
+# Preview
+
+![Previes](.github/venus-os-TailScaleGX.gif)
+
+# Install
+
+## Package Manager by kwindrem
+
+![PackageManager](.github/manually-add.png)
+
+## Execute commands via SSH
+
+```bash
+curl -s https://raw.githubusercontent.com/mr-manuel/venus-os_TailscaleGX/main/download-and-install.sh | bash
+```
 
 # Using
 
@@ -37,14 +52,14 @@ navigate to __Settings / General / Remote access via tailscale__
 
 and turn on __Allow remote connections__
 
-After tailscale starts up you will be presented a message reading:
+After tailscale starts up you will be presented a message reading and a QR code:
 
 >__connect this GX devices to your account at:__
 
 >__https://login.tailscale.com/x/xxxxxxxxxxxxx__
 
 On a computer, tablet or smart phone with the tailscale app installed,
-enter the URL exactly as it is shown on the screen.
+enter the URL exactly as it is shown on the screen or scan the QR code with a mobile device.
 
 You will be asked login to your tailscale account.
 
@@ -60,12 +75,12 @@ On the GX devive, the message should change to:
 
 (IPv4 and IPv6 addresses)
 
-You can then connect to the GX device from any computer, etc logged in to your tailscale account. 
+You can then connect to the GX device from any computer, etc logged in to your tailscale account.
 
 Any tool for ssh, scp, etc or any web browser should work,
 however you must have the tailscale app enabled and logged in to your account.
 
-You can disable tailscale by turning __Allow remote connections__ off. 
+You can disable tailscale by turning __Allow remote connections__ off.
 Turning it on again you will reconnect to tailscale without logging in again.
 The same IP addresses will be used until you logout the GX device.
 
@@ -106,7 +121,7 @@ when __Allow remote connections__ is turned off.
 The tailscale included in TailscaleGX is an "extra-small" build of v1.64.2.
 This build is about 25 MB compared to about 50 MB for the pre-built binairies.
 
-tailscale runs as a daemon (tailscaled). 
+tailscale runs as a daemon (tailscaled).
 
 In Venus OS, tailscaled is run as a daemontools service: __TailscaleGX-backend__
 

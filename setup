@@ -1,5 +1,7 @@
 #!/bin/bash
 
+### ONLY WORKS WITH SETUPHELPER FROM KWINDREM
+
 # setup for Tailscale GX
 #
 # provides secure access to a GX device from any remote location
@@ -10,5 +12,3 @@ standardPromptAndActions='yes'
 #### following line incorporates helper resources into this script
 source "/data/SetupHelper/HelperResources/IncludeHelpers"
 #### end of lines to include helper resources
-
-

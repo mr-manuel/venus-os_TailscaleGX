@@ -5,4 +5,4 @@
 
 exec 2>&1
 
-exec /data/TailscaleGX/TailscaleGX-control.py
+exec /data/venus-os_TailscaleGX/TailscaleGX-control.py
