@@ -12,6 +12,10 @@ chmod +x /data/venus-os_TailscaleGX/services/*/run
 chmod +x /data/venus-os_TailscaleGX/services/*/log/run
 
 
+# try to expand system partition
+bash /opt/victronenergy/swupdate-scripts/resize2fs.sh
+
+
 # cleanup typo
 if [ -d "/services" ]; then
     echo "Remove old \"/services\" folder..."
