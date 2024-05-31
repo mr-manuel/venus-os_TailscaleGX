@@ -179,7 +179,7 @@ MbPage {
 			enableSpaceBar: false
 		}
 		MbItemText {
-			text: qsTr("|- Expose physical subnet routes to your entire Tailscale network.<br><br>NOTE: If you haven't enabled \"autoApprovers\" in the Tailscale admin console, then you need to enable it manually. See https://tailscale.com/kb/1019/subnets -> Enable subnet routes from the admin console")
+			text: qsTr("|- Expose physical subnet routes to your entire Tailscale network.<br><br><b>NOTE:</b> If you haven't enabled \"autoApprovers\" in the Tailscale admin console, then you need to manually approve the route in the Tailscale admin console. See https://tailscale.com/kb/1019/subnets -> Enable subnet routes from the admin console")
 			wrapMode: Text.WordWrap
 			horizontalAlignment: Text.AlignLeft
 		}
