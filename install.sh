@@ -98,19 +98,19 @@ unzip -o /data/venus-os_TailscaleGX/FileSets/venus-webassembly.zip -d /tmp > /de
 
 # move gui v2 files and rename folder
 echo "Move GUIv2 Tailscale files..."
-if [ -d "/var/www/venus/gui-tailscale" ]; then
-    rm -rf /var/www/venus/gui-tailscale
+if [ -d "/var/www/venus/gui-beta" ]; then
+    rm -rf /var/www/venus/gui-beta
 fi
-mv /tmp/wasm /var/www/venus/gui-tailscale
+mv /tmp/wasm /var/www/venus/gui-beta
 
 # create missing files for VRM portal check
 echo "GZip WASM build..."
-cd /var/www/venus/gui-tailscale
+cd /var/www/venus/gui-beta
 gzip -k venus-gui-v2.wasm
 echo "Create SHA256 checksum..."
-sha256sum /var/www/venus/gui-tailscale/venus-gui-v2.wasm > /var/www/venus/gui-tailscale/venus-gui-v2.wasm.sha256
+sha256sum /var/www/venus/gui-beta/venus-gui-v2.wasm > /var/www/venus/gui-beta/venus-gui-v2.wasm.sha256
 
 echo ""
-echo "Install completed. Visit http://venusos.local/gui-tailscale and navigate to Settings -> Services -> Tailscale to test."
-echo "To make GUIv2 with Tailscale available in the VRM portal, rename the folder /var/www/venus/gui-tailscale to /var/www/venus/gui-beta and reboot."
+echo "Install completed. Visit http://venusos.local/gui-beta and navigate to Settings -> Services -> Tailscale to test."
+echo "To make GUIv2 with Tailscale available in the VRM portal reboot your GX device once."
 echo ""
