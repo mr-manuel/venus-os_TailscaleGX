@@ -15,7 +15,7 @@ The GX device must also be logged in to the SAME tailscale account.
 
 tailscale clients are available for Windows, Mac OS, iOS, Linux and Android.
 
-TailscaleGX is on GitHub at https://github.com/kwindrem/TailscaleGX
+TailscaleGX is on GitHub at https://github.com/mr-manuel/venus-os_TailscaleGX
 
 And more information is available at:
 
@@ -97,11 +97,11 @@ If TailscaleGX is already in the list, select it and tap __Proceed__
 
 If not in the list, select __new__ and fill in the details:
 
-Packagename: TailscaleGX
+Packagename: venus-os_TailscaleGX
 
-GitHub user: kwindrem
+GitHub user: md-manuel
 
-GitHub branch or tag: latest
+GitHub branch or tag: main
 
 then tap __Proceed__
 
