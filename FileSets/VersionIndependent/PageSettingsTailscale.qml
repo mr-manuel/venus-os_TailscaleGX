@@ -159,6 +159,7 @@ MbPage {
 			horizontalAlignment: Text.AlignLeft
 		}
 
+		/*
 		MbSwitch {
 			name: qsTr("Advertise exit node")
 			bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/AdvertiseExitNode")
@@ -170,6 +171,7 @@ MbPage {
 			wrapMode: Text.WordWrap
 			horizontalAlignment: Text.AlignLeft
 		}
+		*/
 
 		MbEditBox {
 			description: qsTr("Advertise routes")
@@ -184,6 +186,7 @@ MbPage {
 			horizontalAlignment: Text.AlignLeft
 		}
 
+		/*
 		MbEditBox {
 			description: qsTr("Exit node (IP or name)")
 			readonly: enabledItem.valid && enabledItem.value == 1
@@ -196,6 +199,7 @@ MbPage {
 			wrapMode: Text.WordWrap
 			horizontalAlignment: Text.AlignLeft
 		}
+		*/
 
 		MbEditBox {
 			description: qsTr("Hostname")

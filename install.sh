@@ -85,10 +85,22 @@ if [ ! -f "/opt/victronenergy/gui/qml/PageSettingsServices.qml.orig" ]; then
     cp /data/venus-os_TailscaleGX/FileSets/PatchSource/PageSettingsServices.qml /opt/victronenergy/gui/qml/PageSettingsServices.qml
     cp /data/venus-os_TailscaleGX/FileSets/VersionIndependent/PageSettingsTailscale.qml /opt/victronenergy/gui/qml/PageSettingsTailscale.qml
 
-    # restart gui service
-    svc -d /service/gui
-    sleep 5
-    svc -u /service/gui
+    # check if /service/gui exists
+    if [ -d "/service/gui" ]; then
+        # nanopi, raspberrypi
+        servicePath="/service/gui"
+    else
+        # cerbo gx
+        servicePath="/service/start-gui"
+    fi
+
+    # stop gui
+    svc -d $servicePath
+    # sleep 1 sec
+    sleep 1
+    # start gui
+    svc -u $servicePath
+
 fi
 
 

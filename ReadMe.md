@@ -116,6 +116,54 @@ There is information on the tailscale web site that discusses the security issue
 The GX device will not allow tailscale connections
 when __Allow remote connections__ is turned off.
 
+## Deny GX device traffic to the Tailscale network
+
+To deny traffic from the GX device to the Tailscale network login into your [Tailscale](https://login.tailscale.com) account.
+
+Go to `Access controls` and replace the current content with this (if you did not already made changes) and then save:
+
+```json
+{
+	// Define the tags which can be applied to devices and by which users.
+    // If a tag is assigned to a device, then it replaces the owner/user of the device.
+    // This allows to restrict access for devices where a tag is assigned.
+	// "tagOwners": {
+	//  	"tag:example": ["autogroup:admin"],
+	// },
+	"tagOwners": {
+		"tag:gx-devices": [],
+	},
+
+	// Define access control lists for users, groups, autogroups, tags,
+	// Tailscale IP addresses, and subnet ranges.
+	"acls": [
+        // Allow access for any user who is a direct member (including all invited users) of the tailnet. Does not include users from shared nodes.
+		// You can also make a more granular rule, see https://tailscale.com/kb/1337/acl-syntax#autogroups-autogroup
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["*:*"],
+		},
+	],
+
+	// Define users and devices that can use Tailscale SSH.
+	"ssh": [
+		// Allow all users to SSH into their own devices in check mode.
+		// Comment this section out if you want to define specific restrictions.
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+}
+```
+
+Go to the machines -> click on the three dots on the right of a machine name -> click on `Edit ACL tags...` -> select the `tag:gx-devices` and save.
+
+Now this device can be accessed from the Tailscale network, but the device cannot access the Tailscale network.
+
 # TailscaleGX details
 
 The tailscale included in TailscaleGX is an "extra-small" build of v1.64.2.
