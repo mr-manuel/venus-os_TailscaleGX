@@ -78,7 +78,7 @@ MbPage {
 		else
 			returnValue =  "Unknown state: " + connectState
 
-		return ( qsTr ( "<b>Current state:</b> " + returnValue + (connectState != 6 ? errorMessage : "" ) ) )
+		return ( qsTr ( "<b>Current state:</b> " + returnValue + ( ! isConnected && connectState != 6 ? errorMessage : "" ) ) )
 	}
 
     model: VisibleItemModel {
@@ -181,7 +181,7 @@ MbPage {
 			enableSpaceBar: false
 		}
 		MbItemText {
-			text: qsTr("|- Expose physical subnet routes to your entire Tailscale network.<br><br><b>NOTE:</b> If you haven't enabled \"autoApprovers\" in the Tailscale admin console, then you need to manually approve the route in the Tailscale admin console. See https://tailscale.com/kb/1019/subnets -> Enable subnet routes from the admin console")
+			text: qsTr("|- Expose physical subnet routes to your entire Tailscale network. Separate multiple IP/subnets by comma.<br><br><b>NOTE:</b> If you haven't enabled \"autoApprovers\" in the Tailscale admin console, then you need to manually approve the route in the Tailscale admin console. See https://tailscale.com/kb/1019/subnets -> Enable subnet routes from the admin console")
 			wrapMode: Text.WordWrap
 			horizontalAlignment: Text.AlignLeft
 		}

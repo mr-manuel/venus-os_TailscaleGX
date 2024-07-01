@@ -279,7 +279,10 @@ def mainLoop():
         # https://tailscale.com/kb/1019/subnets
         if DbusSettings["AdvertiseRoutes"] != "":
             command_line_args.append(
-                "--advertise-routes=" + DbusSettings["AdvertiseRoutes"]
+                "--advertise-routes="
+                + re.sub(
+                    r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
+                )  # cleanup string and maintain only allowed characters
             )
 
         # set ip forewarding once
