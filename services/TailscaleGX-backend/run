@@ -6,4 +6,4 @@
 
 exec 2>&1
 
-exec /data/venus-os_TailscaleGX/tailscaled -no-logs-no-support -statedir /data/setupOptions/venus-os_TailscaleGX/state
+exec /data/venus-os_TailscaleGX/tailscaled -no-logs-no-support -statedir /data/venus-os_TailscaleGX/state

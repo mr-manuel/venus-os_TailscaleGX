@@ -102,6 +102,14 @@ def sendCommand(command: list = None, shell: bool = False):
         return stdout, stderr, proc.returncode
 
 
+def cleanup_whitespace(text):
+    # Replace multiple spaces with a single space
+    text = re.sub(r"\s+", " ", text)
+    # Replace multiple new lines with a single new line
+    text = re.sub(r"\n+", "\n", text)
+    return text.strip()
+
+
 tsControlCmd = "/data/venus-os_TailscaleGX/tailscale"
 
 
@@ -189,6 +197,10 @@ def mainLoop():
         backendRunning = False
 
     tailscaleEnabled = DbusSettings["Enabled"] == 1
+
+    # clear error message if tailscale is disabled
+    if not tailscaleEnabled and DbusService["/ErrorMessage"] != "":
+        DbusService["/ErrorMessage"] = ""
 
     # start backend
     if tailscaleEnabled and backendRunning is False:
@@ -412,8 +424,8 @@ def mainLoop():
                     tsControlCmd,
                     "up",
                     "--reset",
-                    # "--timeout=0.1s",
-                    "--timeout=5s",
+                    "--accept-dns=false",  # disable DNS and prevent writing to root fs since it's read-only
+                    "--timeout=0.3s",
                 ] + command_line_args
 
                 # execute command
@@ -422,7 +434,7 @@ def mainLoop():
                 if exitCode != 0:
                     logging.error("tailscale up failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = stderr
+                    DbusService["/ErrorMessage"] = cleanup_whitespace(stderr)
                 else:
                     logging.info(f"executed: {' '.join(command_line_args)}")
                     DbusService["/ErrorMessage"] = ""
@@ -434,7 +446,7 @@ def mainLoop():
                     logging.info("logging in to tailscale without host name")
                     # execute command
                     _, stderr, exitCode = sendCommand(
-                        [tsControlCmd, "login", "--timeout=0.1s"],
+                        [tsControlCmd, "login", "--timeout=0.3s"],
                     )
                 else:
                     logging.info("logging in to tailscale with host name:" + hostname)
@@ -443,7 +455,7 @@ def mainLoop():
                         [
                             tsControlCmd,
                             "login",
-                            "--timeout=0.1s",
+                            "--timeout=0.3s",
                             "--hostname=" + hostname,
                         ]
                     )
@@ -451,7 +463,7 @@ def mainLoop():
                 if exitCode != 0:
                     logging.error("tailscale login failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = stderr
+                    DbusService["/ErrorMessage"] = cleanup_whitespace(stderr)
                 else:
                     DbusService["/ErrorMessage"] = ""
                     state = WAIT_FOR_RESPONSE
@@ -550,14 +562,14 @@ def main():
 
     # TODO: Host name not read from settings on startup
 
-    DbusService = VeDbusService("com.victronenergy.tailscaleGX", bus=dbus.SystemBus())
+    DbusService = VeDbusService("com.victronenergy.tailscale", bus=dbus.SystemBus())
     DbusService.add_mandatory_paths(
-        processname="TailscaleGX-control",
+        processname="Tailscale (remote VPN access)",
         processversion=1.0,
         connection="none",
         deviceinstance=0,
         productid=1,
-        productname="TailscaleGX-control",
+        productname="Tailscale (remote VPN access)",
         firmwareversion=1,
         hardwareversion=0,
         connected=1,

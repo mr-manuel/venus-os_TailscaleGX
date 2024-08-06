@@ -5,7 +5,7 @@ import "utils.js" as Utils
 MbPage {
 	title: qsTr("Tailscale (remote VPN access)")
 
-	property string servicePrefix: "com.victronenergy.tailscaleGX"
+	property string servicePrefix: "com.victronenergy.tailscale"
 	property string settingsPrefix: "com.victronenergy.settings"
 
 	VBusItem {
@@ -60,9 +60,11 @@ MbPage {
 		if ( ! isRunning )
 			returnValue = "Tailscale control not running"
 		else if ( ! isEnabledAndRunning )
-			returnValue = "Service not enabled"
+			// returnValue = "Service not enabled"
+			returnValue = ""
 		else if ( isConnected )
-			returnValue = "Connection successful"
+			// returnValue = "Connection successful"
+			returnValue = ""
 		else if ( connectState == 0 )
 			return ""
 		else if ( connectState == 1 )
@@ -70,7 +72,7 @@ MbPage {
 		else if ( connectState == 2 || connectState == 3)
 			returnValue = "Tailscale starting..."
 		else if ( connectState == 4)
-			returnValue = "This GX device is logged out of Tailscale"
+			returnValue = "This GX device is logged out of Tailscale.<br><br>Please check your internet connection and try again."
 		else if ( connectState == 5)
 			returnValue = "Waiting for a response from Tailscale..."
 		else if ( connectState == 6)
@@ -78,29 +80,40 @@ MbPage {
 		else
 			returnValue =  "Unknown state: " + connectState
 
-		return ( qsTr ( "<b>Current state:</b> " + returnValue + ( ! isConnected && connectState != 6 ? errorMessage : "" ) ) )
+		return ( qsTr ( returnValue ) )
 	}
+
+	/*
+	function getErrorMessage ()
+	{
+		return ( qsTr ( ! isConnected && connectState != 6 ? errorMessage : "" ) )
+	}
+	*/
+
+	property string serviceState: getState()
 
     model: VisibleItemModel {
 		MbSwitch {
 			id: switchTailscaleEnabled
-			name: qsTr("Enable")
+			name: qsTr("Enable Tailscale")
 			bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/Enabled")
 			writeAccessLevel: User.AccessInstaller
 			enabled: isRunning
 		}
-		MbItemText {
-			text: qsTr("Enables a secure remote access via a VPN mesh network. A free account at Tailscale is required.")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-			show: ! isEnabled
-		}
 
 		MbItemText {
-			text: getState ()
+			text: serviceState
 			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
+			show: serviceState !== ""
 		}
+
+		/*
+		MbItemText {
+			text: getErrorMessage()
+			wrapMode: Text.WordWrap
+			show: getErrorMessage() !== "" || ( loginLink !== "" && isEnabled && connectState == 6 )
+		}
+		*/
 
 		MbItem {
 			height: 170
@@ -140,94 +153,48 @@ MbPage {
 			show: isConnected
 		}
 
-		MbItemText {
-			text: qsTr("Advanced options (can only be modified when not connected)<br>For more details see https://tailscale.com/kb/1241/tailscale-up")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-			showAccessLevel: User.AccessInstaller
-		}
+		MbSubMenu {
+			description: qsTr("Advanced")
+			show: user.accessLevel >= showAccessLevel
+			subpage: Component {
+				MbPage {
+					title: qsTr("Tailscale - Advanced")
+					model: VisibleItemModel {
 
-		MbSwitch {
-			name: qsTr("Accept routes")
-			bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/AcceptRoutes")
-			showAccessLevel: User.AccessInstaller
-			enabled: ! (enabledItem.valid && enabledItem.value == 1)
-		}
-		MbItemText {
-			text: qsTr("|- Accept subnet routes that other nodes advertise.")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-		}
+						MbEditBox {
+							description: qsTr("Advertise routes")
+							readonly: enabledItem.valid && enabledItem.value == 1
+							item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/AdvertiseRoutes")
+							maximumLength: 255
+							enableSpaceBar: false
+						}
 
-		/*
-		MbSwitch {
-			name: qsTr("Advertise exit node")
-			bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/AdvertiseExitNode")
-			showAccessLevel: User.AccessInstaller
-			enabled: ! (enabledItem.valid && enabledItem.value == 1)
-		}
-		MbItemText {
-			text: qsTr("|- Offer to be an exit node for outbound internet traffic from the Tailscale network.")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-		}
-		*/
+						MbEditBox {
+							description: qsTr("Hostname")
+							readonly: enabledItem.valid && enabledItem.value == 1
+							item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/Hostname")
+							maximumLength: 255
+							enableSpaceBar: false
+						}
 
-		MbEditBox {
-			description: qsTr("Advertise routes")
-			readonly: enabledItem.valid && enabledItem.value == 1
-			item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/AdvertiseRoutes")
-			maximumLength: 255
-			enableSpaceBar: false
-		}
-		MbItemText {
-			text: qsTr("|- Expose physical subnet routes to your entire Tailscale network. Separate multiple IP/subnets by comma.<br><br><b>NOTE:</b> If you haven't enabled \"autoApprovers\" in the Tailscale admin console, then you need to manually approve the route in the Tailscale admin console. See https://tailscale.com/kb/1019/subnets -> Enable subnet routes from the admin console")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-		}
+						MbEditBox {
+							description: qsTr("Custom server URL (Headscale)")
+							readonly: enabledItem.valid && enabledItem.value == 1
+							item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/CustomServerUrl")
+							maximumLength: 255
+							enableSpaceBar: false
+						}
 
-		/*
-		MbEditBox {
-			description: qsTr("Exit node (IP or name)")
-			readonly: enabledItem.valid && enabledItem.value == 1
-			item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/ExitNode")
-			maximumLength: 255
-			enableSpaceBar: false
-		}
-		MbItemText {
-			text: qsTr("|- Provide a Tailscale IP or machine name to use as an exit node.")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
-		}
-		*/
-
-		MbEditBox {
-			description: qsTr("Hostname")
-			readonly: enabledItem.valid && enabledItem.value == 1
-			item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/Hostname")
-			maximumLength: 255
-			enableSpaceBar: false
-		}
-
-		MbEditBox {
-			description: qsTr("Custom server URL (Headscale)")
-			readonly: enabledItem.valid && enabledItem.value == 1
-			item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/CustomServerUrl")
-			maximumLength: 255
-			enableSpaceBar: false
-		}
-
-		MbEditBox {
-			description: qsTr("Custom Tailscale up arguments")
-			readonly: enabledItem.valid && enabledItem.value == 1
-			item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/CustomArguments")
-			maximumLength: 255
-			enableSpaceBar: false
-		}
-		MbItemText {
-			text: qsTr("|- Add custom arguments to the 'tailscale up' command.")
-			wrapMode: Text.WordWrap
-			horizontalAlignment: Text.AlignLeft
+						MbEditBox {
+							description: qsTr("Custom Tailscale up arguments")
+							readonly: enabledItem.valid && enabledItem.value == 1
+							item.bind: Utils.path( settingsPrefix, "/Settings/Services/Tailscale/CustomArguments")
+							maximumLength: 255
+							enableSpaceBar: false
+						}
+					}
+				}
+			}
 		}
 	}
 }
