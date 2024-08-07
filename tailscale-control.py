@@ -298,47 +298,19 @@ def mainLoop():
             )
 
         # set ip forewarding once
-        # TODO: This filesysten us normally read-only. Here some possible fixes:
-        #    - apply the change in Venus OS
-        #    - move the file to the data partition
-        #    - move the file to a RAM disk
         if DbusSettings["AdvertiseRoutes"] != "" and ipForewardEnabled is not True:
             # execute command
-            # add entry to /etc/sysctl.conf, if it does not exist
             _, stderr, exitCode = sendCommand(
                 [
-                    'grep -qxF "net.ipv4.ip_forward = 1" /etc/sysctl.conf'
-                    + "||"
-                    + 'echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf',
+                    "sysctl net.ipv4.ip_forward=1",
+                    "&&",
+                    "sysctl net.ipv6.conf.all.forwarding=1",
                 ],
                 shell=True,
             )
             result = exitCode == 0
             if exitCode != 0:
                 logging.warning(f"#1 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-            # execute command
-            # add entry to /etc/sysctl.conf, if it does not exist
-            _, stderr, exitCode = sendCommand(
-                [
-                    'grep -qxF "net.ipv6.conf.all.forwarding = 1" /etc/sysctl.conf'
-                    + "||"
-                    + 'echo "net.ipv6.conf.all.forwarding = 1" >> /etc/sysctl.conf',
-                ],
-                shell=True,
-            )
-            result = result and exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#2 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-            # execute command
-            # load the new configuration
-            _, stderr, exitCode = sendCommand(
-                ["sysctl -p /etc/sysctl.conf"], shell=True
-            )
-            result = result and exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#3 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
 
             if result:
                 logging.info("ip forewarding enabled")
@@ -347,33 +319,13 @@ def mainLoop():
         # remove ip forewarding once
         elif DbusSettings["AdvertiseRoutes"] == "" and ipForewardEnabled is not False:
             # execute command
-            # remove entry from /etc/sysctl.conf, if it exists
             _, stderr, exitCode = sendCommand(
                 [
-                    'sed -i "/net.ipv4.ip_forward = 1/d" /etc/sysctl.conf',
+                    "sysctl net.ipv4.ip_forward=0",
+                    "&&",
+                    "sysctl net.ipv6.conf.all.forwarding=0",
                 ],
                 shell=True,
-            )
-            result = exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#4 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-            # execute command
-            # remove entry from /etc/sysctl.conf, if it exists
-            _, stderr, exitCode = sendCommand(
-                [
-                    'sed -i "/net.ipv6.conf.all.forwarding = 1/d" /etc/sysctl.conf',
-                ],
-                shell=True,
-            )
-            result = result and exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#5 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-            # execute command
-            # load the new configuration
-            _, stderr, exitCode = sendCommand(
-                ["sysctl -p /etc/sysctl.conf"], shell=True
             )
             result = result and exitCode == 0
             if exitCode != 0:
