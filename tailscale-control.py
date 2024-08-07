@@ -1,83 +1,38 @@
 #!/usr/bin/env python
 #
-# 	TailscaleGX-control.py
-# 	Kevin Windrem
-#
-# This program controls remote access to a Victron Energy
-# It is based on tailscale which is based on WireGauard.
-#
-# This runs as a daemon tools service at /service/TailscaleGx-control
-#
-# ssh and html (others TBD) connections can be made via
-# 	the IP address(s) supplied by the tailscale broker.
-#
-# Persistent storage for TailscaleGX is stored in dbus Settings:
-#
-# 	com.victronenergy.Settings parameters:
-# 		/Settings/TailscaleGX/Enabled
-# 			controls wheter remote access is enabled or disabled
-#
-# Operational parameters are provided by:
-# 	com.victronenergy.tailscaleGX
-# 		/State
-# 		/IPv4		IP v4 remote access IP address
-# 		/IPv6		as above for IP v6
-# 		/Hostname	as above but as a host name
-# 		/LoginLink	temorary URL for connecting to tailscale
-# 						for initiating a connection
-# 		/GuiCommand	GUI writes string here to request an action:
-# 			logout
-#
-# together, the above settings and dbus service provide the condiut to the GUI
-#
 # On startup the dbus settings and service are created
-# 	control then passes to mainLoop which gets scheduled once per second:
-# 		starts / stops the TailscaleGX-backend based on /Enabled
+# 	tailscale-control then passes to mainLoop which gets scheduled once per second:
+# 		starts / stops the tailscale-backend based on com.victronenergy.settings/Settings/Services/Tailscale/Enabled
 # 		scans status from tailscale link
-# 		TBD
-# 		TBD
-# 		TBD
 # 		provides status and prompting to the GUI during this process
 # 			in the end providing the user the IP address they must use
 # 			to connect to the GX device.
 #
 
-# import platform
-# import argparse
+from gi.repository import GLib
+import dbus
 import logging
 import sys
-import subprocess
-
-# import threading
 import os
-
-# import shutil
-import dbus  # type: ignore
-
-# import time
+import subprocess
 import re
+from socket import gethostname
 
-PythonVersion = sys.version_info
-
-
-# import queue
-from gi.repository import GLib  # type: ignore # noqa: E402
-
-# use an established Victron service to maintain compatiblity
-sys.path.insert(
-    1, os.path.join("/opt/victronenergy/dbus-systemcalc-py", "ext", "velib_python")
-)
+# Victron packages
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "./ext/velib_python"))
 from vedbus import VeDbusService  # noqa: E402
 from settingsdevice import SettingsDevice  # noqa: E402
 
 
-# sends a unix command
-# 	eg sendCommand ( [ 'svc', '-u' , serviceName ] )
-#
-# stdout, stderr and the exit code are returned as a list to the caller
-
-
 def sendCommand(command: list = None, shell: bool = False):
+    """
+    # sends a unix command
+    # e.g. sendCommand ( [ 'svc', '-u' , serviceName ] )
+    #
+    # :param command: list of command and arguments
+    # :param shell: boolean, if True the command is executed in a shell
+    # :return: stdout, stderr, exit code
+    """
     if command is None:
         logging.error("sendCommand(): no command specified")
         return None, None, None
@@ -102,7 +57,13 @@ def sendCommand(command: list = None, shell: bool = False):
         return stdout, stderr, proc.returncode
 
 
-def cleanup_whitespace(text):
+def cleanup_whitespace(text: str) -> str:
+    """
+    cleanup whitespace in a string
+
+    :param text: string to cleanup
+    :return: cleaned up string
+    """
     # Replace multiple spaces with a single space
     text = re.sub(r"\s+", " ", text)
     # Replace multiple new lines with a single new line
@@ -110,7 +71,28 @@ def cleanup_whitespace(text):
     return text.strip()
 
 
-tsControlCmd = "/data/venus-os_TailscaleGX/tailscale"
+def cleanup_hostname(hostname: str) -> str:
+    """
+    cleanup hostname
+
+    :param hostname: hostname to cleanup
+    :return: cleaned up hostname
+    """
+    # replace some characters
+    hostname = hostname.replace("\\", "-")
+
+    # remove any character that is not a letter, digit, or hyphen
+    hostname = re.sub("[^a-zA-Z0-9-]", "", hostname)
+
+    # remove leading and trailing hyphens
+    hostname = hostname.strip("-")
+
+    # convert to lowercase
+    hostname = hostname.lower()
+    return hostname
+
+
+tsControlCmd = "/usr/bin/tailscale"
 
 
 # static variables for main and mainLoop
@@ -129,16 +111,16 @@ CONNECTED = 100
 
 global previousState
 global state
-global systemnameObj
-global systemname
-global hostname
+global systemnameObject
+global systemnameCurrent
+global systemnamePrevious
 global ipV4
 
 previousState = UNKNOWN_STATE
 state = UNKNOWN_STATE
-systemnameObj = None
-systemname = None
-hostname = None
+systemnameObject = None
+systemnameCurrent = ""
+systemnamePrevious = ""
 ipV4 = ""
 ipForewardEnabled = None
 
@@ -148,8 +130,8 @@ def mainLoop():
     global DbusService
     global previousState
     global state
-    global systemname
-    global hostname
+    global systemnameCurrent
+    global systemnamePrevious
     global ipV4
     global ipForewardEnabled
 
@@ -157,39 +139,55 @@ def mainLoop():
 
     backendRunning = None
     tailscaleEnabled = False
-    thisHostname = None
 
     loginInfo = ""
 
-    if systemnameObj is None:
-        systemname = None
-        hostname = None
-    else:
-        name = systemnameObj.GetValue()
-        if name != systemname:
-            systemname = name
-            if name is None or name == "":
-                hostname = None
-                logging.warning("no system name so no host name")
-            else:
-                # allow only letters, numbers and '-'
-                name = re.sub("[^a-zA-Z0-9-]", "", name)
-                name = name.replace("\\", "-")
-                # host name must start with a letter or number
-                name = name.strip(" -").lower()
-                hostname = name
-                logging.info("system name changed to " + systemname)
-                logging.info(
-                    "new host name " + hostname + " will be used on NEXT login"
-                )
+    # check if the system name object is set
+    if systemnameObject is not None:
+        # get the current system name
+        systemnameCurrent = systemnameObject.GetValue()
+
+    # check if the system name has changed
+    if systemnameCurrent != systemnamePrevious:
+        logging.info(
+            f'System name has changed from "{systemnamePrevious}" to "{systemnameCurrent}"'
+        )
+
+        # check if  the previous system name or the sytem hostname was set as the hostname
+        if (
+            cleanup_hostname(systemnamePrevious) == DbusSettings["Hostname"]
+            or gethostname() == DbusSettings["Hostname"]
+        ):
+            # update the hostname
+            logging.info(
+                f'Changing hostname from "{DbusSettings["Hostname"]}" to "{cleanup_hostname(systemnameCurrent)}"'
+            )
+            DbusSettings["Hostname"] = cleanup_hostname(systemnameCurrent)
+
+        # set the current system name as the previous
+        systemnamePrevious = systemnameCurrent
+
+    # check if hostname is empty
+    if DbusSettings["Hostname"] == "":
+        # if there is a system name, set it as the hostname
+        if systemnameCurrent != "":
+            DbusSettings["Hostname"] = cleanup_hostname(systemnameCurrent)
+            logging.info(
+                f'System name is "{systemnameCurrent}", using is as hostname "{DbusSettings["Hostname"]}"'
+            )
+        else:
+            DbusSettings["Hostname"] = gethostname()
+            logging.info(
+                f'System name is empty, using system hostname "{DbusSettings["Hostname"]}"'
+            )
 
     # see if backend is running
-    stdout, stderr, exitCode = sendCommand(["svstat", "/service/TailscaleGX-backend"])
+    stdout, stderr, exitCode = sendCommand(["svstat", "/service/tailscale-backend"])
     if stdout is None:
-        logging.warning("TailscaleGX-backend not in services")
+        logging.warning("tailscale-backend not in services")
         backendRunning = None
     elif stderr is None or "does not exist" in stderr:
-        logging.warning("TailscaleGX-backend not in services")
+        logging.warning("tailscale-backend not in services")
         backendRunning = None
     elif stdout is not None and ": up" in stdout:
         backendRunning = True
@@ -204,8 +202,8 @@ def mainLoop():
 
     # start backend
     if tailscaleEnabled and backendRunning is False:
-        logging.info("starting TailscaleGX-backend")
-        _, _, exitCode = sendCommand(["svc", "-u", "/service/TailscaleGX-backend"])
+        logging.info("starting tailscale-backend")
+        _, _, exitCode = sendCommand(["svc", "-u", "/service/tailscale-backend"])
         if exitCode != 0:
             logging.error("start TailscaleGX failed " + str(exitCode))
         state = BACKEND_STARTING
@@ -223,8 +221,8 @@ def mainLoop():
         else:
             logging.info(f"executed: {tsControlCmd} down")
 
-        logging.info("stopping TailscaleGX-backend")
-        _, _, exitCode = sendCommand(["svc", "-d", "/service/TailscaleGX-backend"])
+        logging.info("stopping tailscale-backend")
+        _, _, exitCode = sendCommand(["svc", "-d", "/service/tailscale-backend"])
         if exitCode != 0:
             logging.error("stop TailscaleGX failed " + str(exitCode))
         backendRunning = False
@@ -270,10 +268,17 @@ def mainLoop():
         elif exitCode == 0:
             state = CONNECTED
             # extract this host's name from status message
+            # this allows to show the hostname, if it was changed in the Tailscale admin panel
             if ipV4 != "":
                 for line in stdout.splitlines():
                     if ipV4 in line:
-                        thisHostname = line.split()[1]
+                        hostname = line.split()[1]
+                        if hostname != DbusSettings["Hostname"]:
+                            logging.info(
+                                f'Hostname changed from "{DbusSettings["Hostname"]}" to'
+                                + f' "{hostname}" from status message'
+                            )
+                            DbusSettings["Hostname"] = hostname
 
         # don't update state if we don't recognize the response
         else:
@@ -282,12 +287,7 @@ def mainLoop():
         # create command line arguments for tailscale up, this allows a dynamic configuration
         command_line_args = []
 
-        if DbusSettings["AcceptRoutes"] == 1:
-            command_line_args.append("--accept-routes")
-
-        if DbusSettings["AdvertiseExitNode"] == 1:
-            command_line_args.append("--advertise-exit-node")
-
+        # set routes to advertise
         # https://tailscale.com/kb/1019/subnets
         if DbusSettings["AdvertiseRoutes"] != "":
             command_line_args.append(
@@ -298,6 +298,10 @@ def mainLoop():
             )
 
         # set ip forewarding once
+        # TODO: This filesysten us normally read-only. Here some possible fixes:
+        #    - apply the change in Venus OS
+        #    - move the file to the data partition
+        #    - move the file to a RAM disk
         if DbusSettings["AdvertiseRoutes"] != "" and ipForewardEnabled is not True:
             # execute command
             # add entry to /etc/sysctl.conf, if it does not exist
@@ -342,7 +346,6 @@ def mainLoop():
 
         # remove ip forewarding once
         elif DbusSettings["AdvertiseRoutes"] == "" and ipForewardEnabled is not False:
-
             # execute command
             # remove entry from /etc/sysctl.conf, if it exists
             _, stderr, exitCode = sendCommand(
@@ -380,24 +383,17 @@ def mainLoop():
                 logging.info("ip forewarding disabled")
                 ipForewardEnabled = False
 
-        if DbusSettings["ExitNode"] != "":
-            command_line_args.append(
-                "--exit-node=" + DbusSettings["ExitNode"],
-                "--exit-node-allow-lan-access",
-            )
+        # set hostname
+        if DbusSettings["Hostname"] != "":
+            command_line_args.append("--hostname=" + DbusSettings["Hostname"])
 
-        # if DbusSettings["Hostname"] != "":
-        #     systemname = DbusSettings["Hostname"]
-        #     hostname = DbusSettings["Hostname"]
-
-        # if hostname is not None and hostname != "":
-        #     command_line_args.append("--hostname=" + hostname)
-
+        # set custom server url, for example to use headscale
         if DbusSettings["CustomServerUrl"] != "":
             command_line_args.append(
                 "--login-server=" + DbusSettings["CustomServerUrl"]
             )
 
+        # add custom arguments
         if DbusSettings["CustomArguments"] != "":
             command_line_args.append(DbusSettings["CustomArguments"])
 
@@ -414,11 +410,6 @@ def mainLoop():
 
             if state == STOPPED and previousState != WAIT_FOR_RESPONSE:
 
-                if systemname is None or systemname == "":
-                    logging.info("starting tailscale without host name")
-                else:
-                    logging.info("starting tailscale with host name:" + hostname)
-
                 # combine command line arguments
                 command_line_args = [
                     tsControlCmd,
@@ -427,6 +418,8 @@ def mainLoop():
                     "--accept-dns=false",  # disable DNS and prevent writing to root fs since it's read-only
                     "--timeout=0.3s",
                 ] + command_line_args
+
+                logging.info(f"command line args: {' '.join(command_line_args)}")
 
                 # execute command
                 _, stderr, exitCode = sendCommand(command_line_args)
@@ -442,21 +435,24 @@ def mainLoop():
 
             elif state == LOGGED_OUT and previousState != WAIT_FOR_RESPONSE:
 
-                if systemname is None or systemname == "":
+                if DbusSettings["Hostname"] == "":
                     logging.info("logging in to tailscale without host name")
                     # execute command
                     _, stderr, exitCode = sendCommand(
                         [tsControlCmd, "login", "--timeout=0.3s"],
                     )
                 else:
-                    logging.info("logging in to tailscale with host name:" + hostname)
+                    logging.info(
+                        "logging in to tailscale with host name:"
+                        + DbusSettings["Hostname"]
+                    )
                     # execute command
                     _, stderr, exitCode = sendCommand(
                         [
                             tsControlCmd,
                             "login",
                             "--timeout=0.3s",
-                            "--hostname=" + hostname,
+                            "--hostname=" + DbusSettings["Hostname"],
                         ]
                     )
 
@@ -486,11 +482,9 @@ def mainLoop():
             else:
                 DbusService["/IPv4"] = "?"
                 DbusService["/IPv6"] = "?"
-            DbusSettings["Hostname"] = thisHostname
         else:
             DbusService["/IPv4"] = ""
             DbusService["/IPv6"] = ""
-            DbusSettings["Hostname"] = ""  # don't clear hostname
 
     else:
         state = NOT_RUNNING
@@ -509,60 +503,54 @@ def mainLoop():
 def main():
     global DbusSettings
     global DbusService
-    global systemnameObj
+    global systemnameObject
 
-    # fetch installed version
-    installedVersionFile = "/etc/venus/installedVersion-TailscaleGX-control"
+    # get installed binary version
     try:
-        versionFile = open(installedVersionFile, "r")
+        # get the version by asking the tailscale binary
+        stdout, stderr, exitCode = sendCommand([tsControlCmd, "version"])
+
+        if exitCode != 0:
+            raise Exception("tailscale version command failed")
+
+        installedVersion = stdout.splitlines()[0]
+
     except Exception:
-        installedVersion = ""
-    else:
-        installedVersion = versionFile.readline().strip()
-        versionFile.close()
-        # if file is empty, an unknown version is installed
-        if installedVersion == "":
-            installedVersion = "unknown"
+        installedVersion = "unknown"
 
     # set logging level to include info level entries
-    logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
-    logging.info("")
-    logging.info(">>>> TailscaleGX-control" + installedVersion + " starting")
+    logging.info(f"Tailscale binary version {installedVersion}")
 
     # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
-    from dbus.mainloop.glib import DBusGMainLoop  # type: ignore
+    from dbus.mainloop.glib import DBusGMainLoop
 
     DBusGMainLoop(set_as_default=True)
-    global PythonVersion
-    if PythonVersion < (3, 0):
-        GLib.threads_init()
 
-    theBus = dbus.SystemBus()
+    dbusSystemBus = dbus.SystemBus()
     dbusSettingsPath = "com.victronenergy.settings"
 
     settingsList = {
         "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
-        "AcceptRoutes": ["/Settings/Services/Tailscale/AcceptRoutes", 0, 0, 1],
-        "AdvertiseExitNode": [
-            "/Settings/Services/Tailscale/AdvertiseExitNode",
-            0,
-            0,
-            1,
-        ],
         "AdvertiseRoutes": ["/Settings/Services/Tailscale/AdvertiseRoutes", "", 0, 255],
-        "ExitNode": ["/Settings/Services/Tailscale/ExitNode", "", 0, 255],
         "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 255],
         "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 255],
         "CustomArguments": ["/Settings/Services/Tailscale/CustomArguments", "", 0, 255],
     }
     DbusSettings = SettingsDevice(
-        bus=theBus, supportedSettings=settingsList, timeout=30, eventCallback=None
+        bus=dbusSystemBus,
+        supportedSettings=settingsList,
+        timeout=30,
+        eventCallback=None,
     )
 
-    # TODO: Host name not read from settings on startup
+    # create the dbus service
+    DbusService = VeDbusService(
+        "com.victronenergy.tailscale", bus=dbus.SystemBus(), register=False
+    )
 
-    DbusService = VeDbusService("com.victronenergy.tailscale", bus=dbus.SystemBus())
+    # add mandatory paths
     DbusService.add_mandatory_paths(
         processname="Tailscale (remote VPN access)",
         processversion=1.0,
@@ -575,6 +563,7 @@ def main():
         connected=1,
     )
 
+    # add custom paths
     DbusService.add_path("/ErrorMessage", "")
     DbusService.add_path("/State", "")
     DbusService.add_path("/IPv4", "")
@@ -583,7 +572,11 @@ def main():
 
     DbusService.add_path("/GuiCommand", "", writeable=True)
 
-    systemnameObj = theBus.get_object(
+    # register VeDbusService after all paths where added
+    DbusService.register()
+
+    # set system name object
+    systemnameObject = dbusSystemBus.get_object(
         dbusSettingsPath, "/Settings/SystemSetup/SystemName"
     )
 
@@ -593,7 +586,7 @@ def main():
     mainloop = GLib.MainLoop()
     mainloop.run()
 
-    logging.critical("TailscaleGX-control exiting")
+    logging.critical("tailscale-control exiting")
 
 
 main()

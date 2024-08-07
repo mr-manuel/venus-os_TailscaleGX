@@ -1,9 +1,8 @@
 #!/bin/sh
-#
-# this service runs tailscaled which provides actual tailscale connection
-#
-# TailscaleGX-control.py starts and stops this service
 
+# this service runs the tailscaled deamon which makes the actual Tailscale connection
+# /opt/victronenergy/tailscale/tailscale-control.py starts and stops this service
+
+echo "*** starting tailscale-backend ***"
 exec 2>&1
-
-exec /data/venus-os_TailscaleGX/tailscaled -no-logs-no-support -statedir /data/venus-os_TailscaleGX/state
+exec /usr/bin/tailscaled -no-logs-no-support -statedir /data/conf/tailscale

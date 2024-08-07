@@ -1,8 +1,8 @@
 #!/bin/sh
-#
-# this service runs TailscaleGX-control.py
+
+# this service runs /opt/victronenergy/tailscale/tailscale-control.py
 # which provides the user interface for controlling tailscale
 
+echo "** starting tailscale-control ***"
 exec 2>&1
-
-exec /data/venus-os_TailscaleGX/TailscaleGX-control.py
+exec /opt/victronenergy/tailscale/tailscale-control.py

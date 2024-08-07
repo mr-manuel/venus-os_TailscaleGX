@@ -29,10 +29,6 @@ TailscaleReadMe.md file is also included in this package.
 
 # Install
 
-## Package Manager by kwindrem
-
-![PackageManager](.github/manually-add.png)
-
 ## Execute commands via SSH
 
 ```bash
