@@ -16,6 +16,13 @@ chmod +x /data/venus-os_TailscaleGX/services/*/log/run
 bash /opt/victronenergy/swupdate-scripts/resize2fs.sh
 
 
+# cleanup old script folder
+if [ -d "/opt/victronenergy/tailscale" ]; then
+    echo "Remove old \"/opt/victronenergy/tailscale\" folder..."
+    rm -rf /opt/victronenergy/tailscale
+fi
+
+
 # cleanup old service copies
 if [ -L "/service/tailscale-backend" ]; then
     echo "Remove old \"/service/tailscale-backend\" folder..."

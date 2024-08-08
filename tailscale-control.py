@@ -1,25 +1,27 @@
 #!/usr/bin/env python
 #
 # On startup the dbus settings and service are created
-# 	tailscale-control then passes to mainLoop which gets scheduled once per second:
-# 		starts / stops the tailscale-backend based on com.victronenergy.settings/Settings/Services/Tailscale/Enabled
-# 		scans status from tailscale link
-# 		provides status and prompting to the GUI during this process
-# 			in the end providing the user the IP address they must use
-# 			to connect to the GX device.
-#
+#   tailscale-control then passes to mainLoop which runs once per second:
+# 	  starts / stops the tailscale-backend based on com.victronenergy.settings/Settings/Services/Tailscale/Enabled
+# 	  scans status from tailscale link
+# 	  provides status and prompting to the GUI during this process
+# 	    in the end providing the user the IP address they must use
+# 	    to connect to the GX device.
 
-from gi.repository import GLib
-import dbus
+
 import logging
-import sys
 import os
-import subprocess
 import re
+import subprocess
+import sys
 from socket import gethostname
 
+import dbus
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import GLib
+
 # Victron packages
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), "./ext/velib_python"))
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "ext/velib_python"))
 from vedbus import VeDbusService  # noqa: E402
 from settingsdevice import SettingsDevice  # noqa: E402
 
@@ -33,7 +35,7 @@ import base64  # noqa: E402
 # TEMPORARY SOLUTION | end
 
 
-def sendCommand(command: list = None, shell: bool = False):
+def sendCommand(command: list = None, shell: bool = False) -> tuple:
     """
     # sends a unix command
     # e.g. sendCommand ( [ 'svc', '-u' , serviceName ] )
@@ -45,6 +47,7 @@ def sendCommand(command: list = None, shell: bool = False):
     if command is None:
         logging.error("sendCommand(): no command specified")
         return None, None, None
+
     try:
         proc = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell
@@ -64,20 +67,6 @@ def sendCommand(command: list = None, shell: bool = False):
         stdout = out.decode().strip()
         stderr = err.decode().strip()
         return stdout, stderr, proc.returncode
-
-
-def cleanup_whitespace(text: str) -> str:
-    """
-    cleanup whitespace in a string
-
-    :param text: string to cleanup
-    :return: cleaned up string
-    """
-    # Replace multiple spaces with a single space
-    text = re.sub(r"\s+", " ", text)
-    # Replace multiple new lines with a single new line
-    text = re.sub(r"\n+", "\n", text)
-    return text.strip()
 
 
 def cleanup_hostname(hostname: str) -> str:
@@ -101,14 +90,11 @@ def cleanup_hostname(hostname: str) -> str:
     return hostname
 
 
-tsControlCmd = "/usr/bin/tailscale"
-
-
 # static variables for main and mainLoop
 DbusSettings = None
 DbusService = None
 
-
+# define states
 UNKNOWN_STATE = 0
 BACKEND_STARTING = 1
 NOT_RUNNING = 2
@@ -118,33 +104,23 @@ WAIT_FOR_RESPONSE = 5
 CONNECT_WAIT = 6
 CONNECTED = 100
 
-global previousState
-global state
-global systemnameObject
-global systemnameCurrent
-global systemnamePrevious
-global ipV4
-
-previousState = UNKNOWN_STATE
-state = UNKNOWN_STATE
+# define global variables
+stateCurrent = UNKNOWN_STATE
+statePrevious = UNKNOWN_STATE
 systemnameObject = None
 systemnameCurrent = ""
 systemnamePrevious = ""
-ipV4 = ""
 ipForewardEnabled = None
 
 
 def mainLoop():
-    global DbusSettings
-    global DbusService
-    global previousState
-    global state
-    global systemnameCurrent
-    global systemnamePrevious
-    global ipV4
+    """
+    Runs every second and checks the status of the tailscale link and checks for GUI commands
+    """
+    global DbusSettings, DbusService
+    global stateCurrent, statePrevious
+    global systemnameCurrent, systemnamePrevious
     global ipForewardEnabled
-
-    # startTime = time.time()
 
     backendRunning = None
     tailscaleEnabled = False
@@ -162,7 +138,8 @@ def mainLoop():
             f'System name has changed from "{systemnamePrevious}" to "{systemnameCurrent}"'
         )
 
-        # check if  the previous system name or the sytem hostname was set as the hostname
+        # check if the previous system name or the sytem hostname was set as the hostname
+        # this is to make sure, that a custom set hostname is not overwritten
         if (
             cleanup_hostname(systemnamePrevious) == DbusSettings["Hostname"]
             or gethostname() == DbusSettings["Hostname"]
@@ -190,7 +167,7 @@ def mainLoop():
                 f'System name is empty, using system hostname "{DbusSettings["Hostname"]}"'
             )
 
-    # see if backend is running
+    # check if backend is running
     stdout, stderr, exitCode = sendCommand(["svstat", "/service/tailscale-backend"])
     if stdout is None:
         logging.warning("tailscale-backend not in services")
@@ -209,86 +186,99 @@ def mainLoop():
     if not tailscaleEnabled and DbusService["/ErrorMessage"] != "":
         DbusService["/ErrorMessage"] = ""
 
-    # start backend
+    # *** this will be managed by the Venus OS plattform in future | start ***
+    # see https://github.com/search?q=repo%3Avictronenergy%2Fvenus-platform%20tailscale&type=code
+
+    # start backend, if tailscale was enabled and the backend is not running
     if tailscaleEnabled and backendRunning is False:
         logging.info("starting tailscale-backend")
-        _, _, exitCode = sendCommand(["svc", "-u", "/service/tailscale-backend"])
+        _, stderr, exitCode = sendCommand(["svc", "-u", "/service/tailscale-backend"])
+
         if exitCode != 0:
-            logging.error("start TailscaleGX failed " + str(exitCode))
-        state = BACKEND_STARTING
-    # stop backend
+            logging.error("starting tailscale-backend failed " + str(exitCode))
+            logging.error(stderr)
+
+        stateCurrent = BACKEND_STARTING
+    # stop backend, if tailscale was disabled and the backend is running
     elif not tailscaleEnabled and backendRunning is True:
 
         # execute tailscale down before stopping backend
         # else config changes won't be applied
-        # execute command
-        _, stderr, exitCode = sendCommand([tsControlCmd, "down"])
+        logging.info("executing /usr/bin/tailscale down")
+        _, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "down"])
 
         if exitCode != 0:
-            logging.error("tailscale down failed " + str(exitCode))
+            logging.error("executing /usr/bin/tailscale down failed " + str(exitCode))
             logging.error(stderr)
-        else:
-            logging.info(f"executed: {tsControlCmd} down")
 
         logging.info("stopping tailscale-backend")
-        _, _, exitCode = sendCommand(["svc", "-d", "/service/tailscale-backend"])
+        _, stderr, exitCode = sendCommand(["svc", "-d", "/service/tailscale-backend"])
+
         if exitCode != 0:
-            logging.error("stop TailscaleGX failed " + str(exitCode))
+            logging.error("stopping tailscale-backend failed " + str(exitCode))
+            logging.error(stderr)
+
         backendRunning = False
+    # *** this will be managed by the Venus OS plattform in future | end ***
 
     if backendRunning:
-
-        # check for GUI commands and act on them
+        # check for GUI commands
         guiCommand = DbusService["/GuiCommand"]
+
+        # check if GUI command is not empty
         if guiCommand != "":
             # acknowledge receipt of command so another can be sent
             DbusService["/GuiCommand"] = ""
+
             if guiCommand == "logout":
                 logging.info("logout command received")
                 # logout takes time and can't specify a timeout so provide feedback first
                 DbusService["/State"] = WAIT_FOR_RESPONSE
-                _, stderr, exitCode = sendCommand([tsControlCmd, "logout"])
+                _, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "logout"])
+
                 if exitCode != 0:
                     logging.error("tailscale logout failed " + str(exitCode))
                     logging.error(stderr)
                 else:
-                    state = WAIT_FOR_RESPONSE
+                    stateCurrent = WAIT_FOR_RESPONSE
             else:
                 logging.warning("invalid command received " + guiCommand)
 
         # get current status from tailscale and update state
-        stdout, stderr, exitCode = sendCommand([tsControlCmd, "status"])
+        stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "status"])
+
         # don't update state if we don't get a response
         if stdout is None or stderr is None:
             pass
         elif "Failed to connect" in stderr:
-            state = NOT_RUNNING
+            stateCurrent = NOT_RUNNING
         elif "Tailscale is stopped" in stdout:
-            state = STOPPED
+            stateCurrent = STOPPED
         elif "Log in at" in stdout:
-            state = CONNECT_WAIT
+            stateCurrent = CONNECT_WAIT
             lines = stdout.splitlines()
             loginInfo = lines[1].replace("Log in at: ", "")
         elif "Logged out" in stdout:
             # can get back to this condition while loggin in
             # so wait for another condition to update state
-            if previousState != WAIT_FOR_RESPONSE:
-                state = LOGGED_OUT
+            if statePrevious != WAIT_FOR_RESPONSE:
+                stateCurrent = LOGGED_OUT
         elif exitCode == 0:
-            state = CONNECTED
+            stateCurrent = CONNECTED
+
             # extract this host's name from status message
             # this allows to show the hostname, if it was changed in the Tailscale admin panel
-            if ipV4 != "":
+            if DbusService["/IPv4"] != "":
                 for line in stdout.splitlines():
-                    if ipV4 in line:
+                    if DbusService["/IPv4"] in line:
                         hostname = line.split()[1]
+
                         if hostname != DbusSettings["Hostname"]:
                             logging.info(
                                 f'Hostname changed from "{DbusSettings["Hostname"]}" to'
                                 + f' "{hostname}" from status message'
                             )
                             DbusSettings["Hostname"] = hostname
-
         # don't update state if we don't recognize the response
         else:
             pass
@@ -317,13 +307,12 @@ def mainLoop():
                 ],
                 shell=True,
             )
-            result = exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#1 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
 
-            if result:
+            if exitCode == 0:
                 logging.info("ip forewarding enabled")
                 ipForewardEnabled = True
+            else:
+                logging.warning(f"#1 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
 
         # remove ip forewarding once
         elif DbusSettings["AdvertiseRoutes"] == "" and ipForewardEnabled is not False:
@@ -336,13 +325,12 @@ def mainLoop():
                 ],
                 shell=True,
             )
-            result = result and exitCode == 0
-            if exitCode != 0:
-                logging.warning(f"#6 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
 
-            if result:
+            if exitCode == 0:
                 logging.info("ip forewarding disabled")
                 ipForewardEnabled = False
+            else:
+                logging.warning(f"#6 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
 
         # set hostname
         if DbusSettings["Hostname"] != "":
@@ -358,79 +346,69 @@ def mainLoop():
         if DbusSettings["CustomArguments"] != "":
             command_line_args.append(DbusSettings["CustomArguments"])
 
+        # check if accept-dns is not set to true in the custom arguments
+        # accept-dns is disabled by default to prevent writing to root fs since it's read-only
+        if "--accept-dns=true" not in command_line_args:
+            command_line_args.append("--accept-dns=false")
+
         # make changes necessary to bring connection up
         # 	up will fully connect if login had succeeded
         # 	or ask for login if not
-        # 	next get syatus pass will indicate that
-        # call is made with a short timeout so we can monitor status
+        # 	next get status pass will indicate that
+        #   call is made with a short timeout so we can monitor status
         # 	but need to defer future tailscale commands until
         # 	tailscale has processed the first one
         # 	ALMOST any state change will signal the wait is over
         # 	(status not included)
-        if state != previousState:
-
-            if state == STOPPED and previousState != WAIT_FOR_RESPONSE:
-
+        if stateCurrent != statePrevious:
+            if stateCurrent == STOPPED and statePrevious != WAIT_FOR_RESPONSE:
                 # combine command line arguments
                 command_line_args = [
-                    tsControlCmd,
+                    "/usr/bin/tailscale",
                     "up",
                     "--reset",
-                    "--accept-dns=false",  # disable DNS and prevent writing to root fs since it's read-only
-                    "--timeout=0.3s",
+                    # prevent timeout on slower devices/networks
+                    "--timeout=30s",
                 ] + command_line_args
 
-                logging.info(f"command line args: {' '.join(command_line_args)}")
-
-                # execute command
+                logging.info(f"executing {' '.join(command_line_args)}")
                 _, stderr, exitCode = sendCommand(command_line_args)
 
                 if exitCode != 0:
                     logging.error("tailscale up failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = cleanup_whitespace(stderr)
+                    DbusService["/ErrorMessage"] = stderr
                 else:
                     logging.info(f"executed: {' '.join(command_line_args)}")
                     DbusService["/ErrorMessage"] = ""
-                    state = WAIT_FOR_RESPONSE
+                    stateCurrent = WAIT_FOR_RESPONSE
 
-            elif state == LOGGED_OUT and previousState != WAIT_FOR_RESPONSE:
-
-                if DbusSettings["Hostname"] == "":
-                    logging.info("logging in to tailscale without host name")
-                    # execute command
-                    _, stderr, exitCode = sendCommand(
-                        [tsControlCmd, "login", "--timeout=0.3s"],
-                    )
-                else:
-                    logging.info(
-                        "logging in to tailscale with host name:"
-                        + DbusSettings["Hostname"]
-                    )
-                    # execute command
-                    _, stderr, exitCode = sendCommand(
-                        [
-                            tsControlCmd,
-                            "login",
-                            "--timeout=0.3s",
-                            "--hostname=" + DbusSettings["Hostname"],
-                        ]
-                    )
+            elif stateCurrent == LOGGED_OUT and statePrevious != WAIT_FOR_RESPONSE:
+                logging.info("logging in to tailscale")
+                _, stderr, exitCode = sendCommand(
+                    [
+                        "/usr/bin/tailscale",
+                        "login",
+                        # prevent timeout on slower devices/networks
+                        "--timeout=30s",
+                        "--hostname=" + DbusSettings["Hostname"],
+                    ],
+                )
 
                 if exitCode != 0:
                     logging.error("tailscale login failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = cleanup_whitespace(stderr)
+                    DbusService["/ErrorMessage"] = stderr
                 else:
                     DbusService["/ErrorMessage"] = ""
-                    state = WAIT_FOR_RESPONSE
+                    stateCurrent = WAIT_FOR_RESPONSE
 
         # show IP addresses only if connected
-        if state == CONNECTED:
-            if previousState != CONNECTED:
+        if stateCurrent == CONNECTED:
+            if statePrevious != CONNECTED:
                 logging.info("connection successful")
 
-            stdout, stderr, exitCode = sendCommand([tsControlCmd, "ip"])
+            stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "ip"])
 
             if exitCode != 0:
                 logging.error("tailscale ip failed " + str(exitCode))
@@ -441,21 +419,21 @@ def mainLoop():
                 DbusService["/IPv4"] = ipV4
                 DbusService["/IPv6"] = ipV6
             else:
-                DbusService["/IPv4"] = "?"
-                DbusService["/IPv6"] = "?"
+                DbusService["/IPv4"] = "unknown"
+                DbusService["/IPv6"] = "unknown"
         else:
             DbusService["/IPv4"] = ""
             DbusService["/IPv6"] = ""
 
     else:
-        state = NOT_RUNNING
+        stateCurrent = NOT_RUNNING
 
     # update dbus values regardless of state of the link
-    DbusService["/State"] = state
+    DbusService["/State"] = stateCurrent
     DbusService["/LoginLink"] = loginInfo
 
+    # TEMPORARY SOLUTION | start
     if loginInfo != "":
-        # TEMPORARY SOLUTION | start
         # Until QR code is generated in the GUI
         qr = qrcode.QRCode(
             version=1,
@@ -478,24 +456,24 @@ def mainLoop():
         img.save(buffer)
         img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         DbusService["/LoginLinkQrCode"] = img_base64
-        # TEMPORARY SOLUTION | end
+    # TEMPORARY SOLUTION | end
 
-    previousState = state
-    # TODO: enable for testing
-    # endTime = time.time()
-    # print ("main loop time %3.1f mS" % ( (endTime - startTime) * 1000 ))
+    statePrevious = stateCurrent
+
     return True
 
 
 def main():
-    global DbusSettings
-    global DbusService
+    global DbusSettings, DbusService
     global systemnameObject
+
+    # set logging level to include info level entries
+    logging.basicConfig(level=logging.INFO)
 
     # get installed binary version
     try:
         # get the version by asking the tailscale binary
-        stdout, stderr, exitCode = sendCommand([tsControlCmd, "version"])
+        stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "version"])
 
         if exitCode != 0:
             raise Exception("tailscale version command failed")
@@ -505,26 +483,25 @@ def main():
     except Exception:
         installedVersion = "unknown"
 
-    # set logging level to include info level entries
-    logging.basicConfig(level=logging.INFO)
-
+    # log the tailscale binary version
     logging.info(f"Tailscale binary version {installedVersion}")
 
-    # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
-    from dbus.mainloop.glib import DBusGMainLoop
-
+    # set up dbus main loop to get async calls
     DBusGMainLoop(set_as_default=True)
 
-    dbusSystemBus = dbus.SystemBus()
-    dbusSettingsPath = "com.victronenergy.settings"
-
+    # create the settings object
     settingsList = {
         "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
-        "AdvertiseRoutes": ["/Settings/Services/Tailscale/AdvertiseRoutes", "", 0, 255],
-        "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 255],
-        "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 255],
-        "CustomArguments": ["/Settings/Services/Tailscale/CustomArguments", "", 0, 255],
+        "AdvertiseRoutes": ["/Settings/Services/Tailscale/AdvertiseRoutes", "", 0, 0],
+        "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 0],
+        "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 0],
+        "CustomArguments": ["/Settings/Services/Tailscale/CustomArguments", "", 0, 0],
     }
+
+    # create the system bus object
+    dbusSystemBus = dbus.SystemBus()
+
+    # create the dbus settings object
     DbusSettings = SettingsDevice(
         bus=dbusSystemBus,
         supportedSettings=settingsList,
@@ -557,7 +534,6 @@ def main():
     DbusService.add_path("/IPv6", "")
     DbusService.add_path("/LoginLink", "")
     DbusService.add_path("/LoginLinkQrCode", "")
-
     DbusService.add_path("/GuiCommand", "", writeable=True)
 
     # register VeDbusService after all paths where added
@@ -565,7 +541,7 @@ def main():
 
     # set system name object
     systemnameObject = dbusSystemBus.get_object(
-        dbusSettingsPath, "/Settings/SystemSetup/SystemName"
+        "com.victronenergy.settings", "/Settings/SystemSetup/SystemName"
     )
 
     # call the main loop - every 1 second
