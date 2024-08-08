@@ -23,6 +23,15 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), "./ext/velib_python")
 from vedbus import VeDbusService  # noqa: E402
 from settingsdevice import SettingsDevice  # noqa: E402
 
+# TEMPORARY SOLUTION | start
+# Until QR code is generated in the GUI
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "ext"))
+import qrcode  # noqa: E402
+import io  # noqa: E402
+import base64  # noqa: E402
+
+# TEMPORARY SOLUTION | end
+
 
 def sendCommand(command: list = None, shell: bool = False):
     """
@@ -445,6 +454,32 @@ def mainLoop():
     DbusService["/State"] = state
     DbusService["/LoginLink"] = loginInfo
 
+    if loginInfo != "":
+        # TEMPORARY SOLUTION | start
+        # Until QR code is generated in the GUI
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=5,
+            border=0,
+        )
+        qr.add_data(loginInfo)
+        qr.make(fit=True)
+
+        img = qr.make_image(
+            fill_color="#000000",
+            back_color="#ffffff",
+        )
+        type(img)  # qrcode.image.pil.PilImage
+        # img.save("/var/www/venus/tailscale.png")
+
+        # Transform image to base64
+        buffer = io.BytesIO()
+        img.save(buffer)
+        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        DbusService["/LoginLinkQrCode"] = img_base64
+        # TEMPORARY SOLUTION | end
+
     previousState = state
     # TODO: enable for testing
     # endTime = time.time()
@@ -521,6 +556,7 @@ def main():
     DbusService.add_path("/IPv4", "")
     DbusService.add_path("/IPv6", "")
     DbusService.add_path("/LoginLink", "")
+    DbusService.add_path("/LoginLinkQrCode", "")
 
     DbusService.add_path("/GuiCommand", "", writeable=True)
 
