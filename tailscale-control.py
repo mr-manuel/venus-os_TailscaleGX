@@ -79,14 +79,15 @@ def cleanup_hostname(hostname: str) -> str:
     # replace some characters
     hostname = hostname.replace("\\", "-")
 
+    # convert to lowercase
+    hostname = hostname.lower()
+
     # remove any character that is not a letter, digit, or hyphen
-    hostname = re.sub("[^a-zA-Z0-9-]", "", hostname)
+    hostname = re.sub("[^a-z0-9-]", "", hostname)
 
     # remove leading and trailing hyphens
     hostname = hostname.strip("-")
 
-    # convert to lowercase
-    hostname = hostname.lower()
     return hostname
 
 
@@ -289,11 +290,13 @@ def mainLoop():
         # set routes to advertise
         # https://tailscale.com/kb/1019/subnets
         if DbusSettings["AdvertiseRoutes"] != "":
+            # remove unallowed characters
+            DbusSettings["AdvertiseRoutes"] = re.sub(
+                r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
+            )
+
             command_line_args.append(
-                "--advertise-routes="
-                + re.sub(
-                    r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
-                )  # cleanup string and maintain only allowed characters
+                "--advertise-routes=" + DbusSettings["AdvertiseRoutes"]
             )
 
         # set ip forewarding once
@@ -334,22 +337,44 @@ def mainLoop():
 
         # set hostname
         if DbusSettings["Hostname"] != "":
+            # cleanup hostname
+            DbusSettings["Hostname"] = cleanup_hostname(DbusSettings["Hostname"])
+
             command_line_args.append("--hostname=" + DbusSettings["Hostname"])
 
         # set custom server url, for example to use headscale
         if DbusSettings["CustomServerUrl"] != "":
-            command_line_args.append(
-                "--login-server=" + DbusSettings["CustomServerUrl"]
+            # transform to lowercase
+            DbusSettings["CustomServerUrl"] = DbusSettings["CustomServerUrl"].lower()
+
+            # remove http:// or https:// from URL
+            DbusSettings["CustomServerUrl"] = re.sub(
+                r"https?://", "", DbusSettings["CustomServerUrl"]
             )
+
+            # remove invalid characters from domain
+            DbusSettings["CustomServerUrl"] = re.sub(
+                r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
+            )
+
+            command_line_args.append(
+                "--login-server=https://" + DbusSettings["CustomServerUrl"]
+            )
+
+        # check if accept-dns is not set in the custom arguments
+        # accept-dns is disabled by default to prevent writing to root fs since it's read-only
+        if "--accept-dns" not in DbusSettings["CustomArguments"]:
+            command_line_args.append("--accept-dns=false")
 
         # add custom arguments
         if DbusSettings["CustomArguments"] != "":
-            command_line_args.append(DbusSettings["CustomArguments"])
+            # remove unallowed characters to prevent command injection
+            DbusSettings["CustomServerUrl"] = re.sub(
+                r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
+            )
 
-        # check if accept-dns is not set to true in the custom arguments
-        # accept-dns is disabled by default to prevent writing to root fs since it's read-only
-        if "--accept-dns=true" not in command_line_args:
-            command_line_args.append("--accept-dns=false")
+            # split on one or multiple space
+            command_line_args.extend(re.split(r"\s+", DbusSettings["CustomArguments"]))
 
         # make changes necessary to bring connection up
         # 	up will fully connect if login had succeeded
@@ -379,8 +404,6 @@ def mainLoop():
                     logging.error(stderr)
                     DbusService["/ErrorMessage"] = stderr
                 else:
-                    logging.info(f"executed: {' '.join(command_line_args)}")
-                    DbusService["/ErrorMessage"] = ""
                     stateCurrent = WAIT_FOR_RESPONSE
 
             elif stateCurrent == LOGGED_OUT and statePrevious != WAIT_FOR_RESPONSE:
