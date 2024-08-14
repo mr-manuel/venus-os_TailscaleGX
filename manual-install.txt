@@ -1,0 +1,4 @@
+ext                        --> /opt/victronenergy/tailscale/ext
+tailscale-control.py       --> /opt/victronenergy/tailscale/tailscale-control.py
+services/tailscale-backend --> /opt/victronenergy/service/tailscale-backend
+services/tailscale-control --> /opt/victronenergy/service/tailscale-control
