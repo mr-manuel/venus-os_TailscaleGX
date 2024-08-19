@@ -69,6 +69,22 @@ def sendCommand(command: list = None, shell: bool = False) -> tuple:
         return stdout, stderr, proc.returncode
 
 
+def cleanup_error_message(error_message: str) -> str:
+    """
+    cleanup error message
+
+    :param error_message: error message to cleanup
+    :return: cleaned up error message
+    """
+    # remove specific strings
+    error_message = error_message.replace(
+        'timeout waiting for Tailscale service to enter a Running state; check health with "tailscale status"',
+        "",
+    )
+
+    return error_message
+
+
 def cleanup_hostname(hostname: str) -> str:
     """
     cleanup hostname
@@ -96,18 +112,20 @@ DbusSettings = None
 DbusService = None
 
 # define states
-UNKNOWN_STATE = 0
-BACKEND_STARTING = 1
-NOT_RUNNING = 2
-STOPPED = 3
-LOGGED_OUT = 4
-WAIT_FOR_RESPONSE = 5
-CONNECT_WAIT = 6
-CONNECTED = 100
+STATE_INITIALIZING = 0
+STATE_BACKEND_STARTING = 1
+STATE_BACKEND_STOPPED = 2
+STATE_CONNECTION_FAILED = 3
+STATE_STOPPED = 4
+STATE_LOGGED_OUT = 5
+STATE_WAIT_FOR_RESPONSE = 6
+STATE_WAIT_FOR_LOGIN = 7
+STATE_NO_STATE = 8
+STATE_CONNECTION_OK = 100
 
 # define global variables
-stateCurrent = UNKNOWN_STATE
-statePrevious = UNKNOWN_STATE
+stateCurrent = STATE_INITIALIZING
+statePrevious = STATE_INITIALIZING
 systemnameObject = None
 systemnameCurrent = ""
 systemnamePrevious = ""
@@ -199,7 +217,7 @@ def mainLoop():
             logging.error("starting tailscale-backend failed " + str(exitCode))
             logging.error(stderr)
 
-        stateCurrent = BACKEND_STARTING
+        stateCurrent = STATE_BACKEND_STARTING
     # stop backend, if tailscale was disabled and the backend is running
     elif not tailscaleEnabled and backendRunning is True:
 
@@ -234,14 +252,14 @@ def mainLoop():
             if guiCommand == "logout":
                 logging.info("logout command received")
                 # logout takes time and can't specify a timeout so provide feedback first
-                DbusService["/State"] = WAIT_FOR_RESPONSE
+                DbusService["/State"] = STATE_WAIT_FOR_RESPONSE
                 _, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "logout"])
 
                 if exitCode != 0:
                     logging.error("tailscale logout failed " + str(exitCode))
                     logging.error(stderr)
                 else:
-                    stateCurrent = WAIT_FOR_RESPONSE
+                    stateCurrent = STATE_WAIT_FOR_RESPONSE
             else:
                 logging.warning("invalid command received " + guiCommand)
 
@@ -252,20 +270,25 @@ def mainLoop():
         if stdout is None or stderr is None:
             pass
         elif "Failed to connect" in stderr:
-            stateCurrent = NOT_RUNNING
+            stateCurrent = STATE_CONNECTION_FAILED
         elif "Tailscale is stopped" in stdout:
-            stateCurrent = STOPPED
+            stateCurrent = STATE_STOPPED
         elif "Log in at" in stdout:
-            stateCurrent = CONNECT_WAIT
+            stateCurrent = STATE_WAIT_FOR_LOGIN
             lines = stdout.splitlines()
             loginInfo = lines[1].replace("Log in at: ", "")
         elif "Logged out" in stdout:
             # can get back to this condition while loggin in
             # so wait for another condition to update state
-            if statePrevious != WAIT_FOR_RESPONSE:
-                stateCurrent = LOGGED_OUT
+            if statePrevious != STATE_WAIT_FOR_RESPONSE:
+                stateCurrent = STATE_LOGGED_OUT
+        elif "NoState" in stdout:
+            # When Tailscale is already logged in, but has no internet connection
+            # the state is "unexpected state: NoState"
+            # If logged out, the status only shows "Logged out"
+            stateCurrent = STATE_NO_STATE
         elif exitCode == 0:
-            stateCurrent = CONNECTED
+            stateCurrent = STATE_CONNECTION_OK
 
             # extract this host's name from status message
             # this allows to show the hostname, if it was changed in the Tailscale admin panel
@@ -386,14 +409,17 @@ def mainLoop():
         # 	ALMOST any state change will signal the wait is over
         # 	(status not included)
         if stateCurrent != statePrevious:
-            if stateCurrent == STOPPED and statePrevious != WAIT_FOR_RESPONSE:
+            if (
+                stateCurrent == STATE_STOPPED
+                and statePrevious != STATE_WAIT_FOR_RESPONSE
+            ):
                 # combine command line arguments
                 command_line_args = [
                     "/usr/bin/tailscale",
                     "up",
                     "--reset",
                     # prevent timeout on slower devices/networks
-                    "--timeout=30s",
+                    "--timeout=0.5s",
                 ] + command_line_args
 
                 logging.info(f"executing {' '.join(command_line_args)}")
@@ -402,18 +428,21 @@ def mainLoop():
                 if exitCode != 0:
                     logging.error("tailscale up failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = stderr
+                    DbusService["/ErrorMessage"] = cleanup_error_message(stderr)
                 else:
-                    stateCurrent = WAIT_FOR_RESPONSE
+                    stateCurrent = STATE_WAIT_FOR_RESPONSE
 
-            elif stateCurrent == LOGGED_OUT and statePrevious != WAIT_FOR_RESPONSE:
+            elif (
+                stateCurrent == STATE_LOGGED_OUT
+                and statePrevious != STATE_WAIT_FOR_RESPONSE
+            ):
                 logging.info("logging in to tailscale")
                 _, stderr, exitCode = sendCommand(
                     [
                         "/usr/bin/tailscale",
                         "login",
                         # prevent timeout on slower devices/networks
-                        "--timeout=30s",
+                        "--timeout=0.5s",
                         "--hostname=" + DbusSettings["Hostname"],
                     ],
                 )
@@ -421,14 +450,14 @@ def mainLoop():
                 if exitCode != 0:
                     logging.error("tailscale login failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = stderr
+                    DbusService["/ErrorMessage"] = cleanup_error_message(stderr)
                 else:
                     DbusService["/ErrorMessage"] = ""
-                    stateCurrent = WAIT_FOR_RESPONSE
+                    stateCurrent = STATE_WAIT_FOR_RESPONSE
 
         # show IP addresses only if connected
-        if stateCurrent == CONNECTED:
-            if statePrevious != CONNECTED:
+        if stateCurrent == STATE_CONNECTION_OK:
+            if statePrevious != STATE_CONNECTION_OK:
                 logging.info("connection successful")
 
             stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "ip"])
@@ -449,7 +478,7 @@ def mainLoop():
             DbusService["/IPv6"] = ""
 
     else:
-        stateCurrent = NOT_RUNNING
+        stateCurrent = STATE_BACKEND_STOPPED
 
     # update dbus values regardless of state of the link
     DbusService["/State"] = stateCurrent
@@ -514,11 +543,11 @@ def main():
 
     # create the settings object
     settingsList = {
-        "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
         "AdvertiseRoutes": ["/Settings/Services/Tailscale/AdvertiseRoutes", "", 0, 0],
-        "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 0],
-        "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 0],
         "CustomArguments": ["/Settings/Services/Tailscale/CustomArguments", "", 0, 0],
+        "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 0],
+        "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
+        "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 0],
     }
 
     # create the system bus object
@@ -537,27 +566,15 @@ def main():
         "com.victronenergy.tailscale", bus=dbus.SystemBus(), register=False
     )
 
-    # add mandatory paths
-    DbusService.add_mandatory_paths(
-        processname="Tailscale (remote VPN access)",
-        processversion=1.0,
-        connection="none",
-        deviceinstance=0,
-        productid=1,
-        productname="Tailscale (remote VPN access)",
-        firmwareversion=1,
-        hardwareversion=0,
-        connected=1,
-    )
-
-    # add custom paths
+    # add paths
     DbusService.add_path("/ErrorMessage", "")
-    DbusService.add_path("/State", "")
+    DbusService.add_path("/GuiCommand", "", writeable=True)
     DbusService.add_path("/IPv4", "")
     DbusService.add_path("/IPv6", "")
     DbusService.add_path("/LoginLink", "")
     DbusService.add_path("/LoginLinkQrCode", "")
-    DbusService.add_path("/GuiCommand", "", writeable=True)
+    DbusService.add_path("/ProductName", "Tailscale (remote VPN access)")
+    DbusService.add_path("/State", STATE_INITIALIZING)
 
     # register VeDbusService after all paths where added
     DbusService.register()
