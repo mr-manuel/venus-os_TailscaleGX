@@ -107,6 +107,46 @@ def cleanup_hostname(hostname: str) -> str:
     return hostname
 
 
+def check_device_network(device: str) -> str:
+    """
+    Check if a device is up and return the network
+
+    :param dev: device to check
+    :return: extracted network or empty string
+    """
+    # Check if the device is up
+    stdout, stderr, exitCode = sendCommand([f"ip link show {device}"], shell=True)
+
+    if exitCode == 0:
+        if "state UP" in stdout:
+            # get network
+            stdout, stderr, exitCode = sendCommand(
+                [f"ip route show dev {device}"], shell=True
+            )
+
+            if exitCode == 0:
+                # extract network
+                network = re.search(r"([0-9.]+/[0-9]{1,2})", stdout)
+
+                if network is not None:
+                    logging.info(f'Device "{device}" route found: {network.group(1)}')
+                    return network.group(1)
+                else:
+                    logging.warning(
+                        f'Device "{device}" could not extract network: {stdout}'
+                    )
+            else:
+                logging.warning(f'Device "{device}" error: {stderr}')
+        else:
+            logging.info(f'Device "{device}" is DOWN')
+    else:
+        # device does not exist
+        # logging.info(stderr)
+        pass
+
+    return ""
+
+
 # static variables for main and mainLoop
 DbusSettings = None
 DbusService = None
@@ -158,30 +198,30 @@ def mainLoop():
         # check if the previous system name or the sytem hostname was set as the hostname
         # this is to make sure, that a custom set hostname is not overwritten
         if (
-            cleanup_hostname(systemnamePrevious) == DbusSettings["Hostname"]
-            or gethostname() == DbusSettings["Hostname"]
+            cleanup_hostname(systemnamePrevious) == DbusSettings["Machinename"]
+            or gethostname() == DbusSettings["Machinename"]
         ):
             # update the hostname
             logging.info(
-                f'Changing hostname from "{DbusSettings["Hostname"]}" to "{cleanup_hostname(systemnameCurrent)}"'
+                f'Changing hostname from "{DbusSettings["Machinename"]}" to "{cleanup_hostname(systemnameCurrent)}"'
             )
-            DbusSettings["Hostname"] = cleanup_hostname(systemnameCurrent)
+            DbusSettings["Machinename"] = cleanup_hostname(systemnameCurrent)
 
         # set the current system name as the previous
         systemnamePrevious = systemnameCurrent
 
     # check if hostname is empty
-    if DbusSettings["Hostname"] == "":
+    if DbusSettings["Machinename"] == "":
         # if there is a system name, set it as the hostname
         if systemnameCurrent != "":
-            DbusSettings["Hostname"] = cleanup_hostname(systemnameCurrent)
+            DbusSettings["Machinename"] = cleanup_hostname(systemnameCurrent)
             logging.info(
-                f'System name is "{systemnameCurrent}", using is as hostname "{DbusSettings["Hostname"]}"'
+                f'System name is "{systemnameCurrent}", using is as hostname "{DbusSettings["Machinename"]}"'
             )
         else:
-            DbusSettings["Hostname"] = gethostname()
+            DbusSettings["Machinename"] = gethostname()
             logging.info(
-                f'System name is empty, using system hostname "{DbusSettings["Hostname"]}"'
+                f'System name is empty, using system hostname "{DbusSettings["Machinename"]}"'
             )
 
     # check if backend is running
@@ -299,12 +339,12 @@ def mainLoop():
                     if DbusService["/IPv4"] in line:
                         hostname = line.split()[1]
 
-                        if hostname != DbusSettings["Hostname"]:
+                        if hostname != DbusSettings["Machinename"]:
                             logging.info(
-                                f'Hostname changed from "{DbusSettings["Hostname"]}" to'
+                                f'Machinename changed from "{DbusSettings["Machinename"]}" to'
                                 + f' "{hostname}" from status message'
                             )
-                            DbusSettings["Hostname"] = hostname
+                            DbusSettings["Machinename"] = hostname
         # don't update state if we don't recognize the response
         else:
             pass
@@ -322,123 +362,158 @@ def mainLoop():
         if stateCurrent != statePrevious:
             logging.info(f"state change from {statePrevious} to {stateCurrent}")
 
-            # create command line arguments for tailscale up, this allows a dynamic configuration
-            command_line_args = []
-
-            # add timeout
-            command_line_args.append("--timeout=0.5s")
-
-            # set routes to advertise
-            # https://tailscale.com/kb/1019/subnets
-            if DbusSettings["AdvertiseRoutes"] != "":
-                # remove unallowed characters
-                DbusSettings["AdvertiseRoutes"] = re.sub(
-                    r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
-                )
-
-                command_line_args.append(
-                    "--advertise-routes=" + DbusSettings["AdvertiseRoutes"]
-                )
-
-            # set hostname
-            if DbusSettings["Hostname"] != "":
-                # cleanup hostname
-                DbusSettings["Hostname"] = cleanup_hostname(DbusSettings["Hostname"])
-
-                command_line_args.append("--hostname=" + DbusSettings["Hostname"])
-
-            # set custom server url, for example to use headscale
-            if DbusSettings["CustomServerUrl"] != "":
-                # transform to lowercase
-                DbusSettings["CustomServerUrl"] = DbusSettings[
-                    "CustomServerUrl"
-                ].lower()
-
-                # remove http:// or https:// from URL
-                DbusSettings["CustomServerUrl"] = re.sub(
-                    r"https?://", "", DbusSettings["CustomServerUrl"]
-                )
-
-                # remove invalid characters from domain
-                DbusSettings["CustomServerUrl"] = re.sub(
-                    r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
-                )
-
-                command_line_args.append(
-                    "--login-server=https://" + DbusSettings["CustomServerUrl"]
-                )
-
-            # check if accept-dns is not set in the custom arguments
-            # accept-dns is disabled by default to prevent writing to root fs since it's read-only
-            if "--accept-dns" not in DbusSettings["CustomArguments"]:
-                command_line_args.append("--accept-dns=false")
-
-            # check if subnet routing is enabled
-            stdout, stderr, exitCode = sendCommand(
-                ["sysctl -n net.ipv4.ip_forward"], shell=True
-            )
-
-            if exitCode == 0:
-                ipForewardEnabled = stdout == "1"
-            else:
-                logging.warning(
-                    f"#1 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
-                )
-
-            # add ip forwarding if needed
             if (
-                DbusSettings["AdvertiseRoutes"] != ""
-                or "--advertise-exit-node" in DbusSettings["CustomArguments"]
-            ) and ipForewardEnabled is not True:
-                # execute command
+                stateCurrent == STATE_STOPPED or stateCurrent == STATE_LOGGED_OUT
+            ) and statePrevious != STATE_WAIT_FOR_RESPONSE:
+                # create command line arguments for tailscale up, this allows a dynamic configuration
+                command_line_args = []
+
+                # add timeout
+                command_line_args.append("--timeout=0.5s")
+
+                # set routes to advertise
+                # https://tailscale.com/kb/1019/subnets
+
+                # create a list of routes to advertise
+                advertise_routes = []
+
+                if DbusSettings["AccessLocalEthernet"] == 1:
+                    # check if network is available and add to advertise routes
+                    network = check_device_network("eth0")
+
+                    if network != "":
+                        advertise_routes.append(network)
+
+                if DbusSettings["AccessLocalWifi"] == 1:
+                    # define possible devices
+                    devices = ["wifi0", "wlan0", "ap0"]
+
+                    for device in devices:
+                        # check if network is available and add to advertise routes
+                        network = check_device_network(device)
+
+                        if network != "":
+                            advertise_routes.append(network)
+
+                if DbusSettings["CustomNetworks"] != "":
+                    # remove unallowed characters
+                    DbusSettings["CustomNetworks"] = re.sub(
+                        r"[^0-9./,]", "", DbusSettings["CustomNetworks"]
+                    )
+                    advertise_routes.extend(DbusSettings["CustomNetworks"].split(","))
+
+                if len(advertise_routes) > 0:
+                    # remove duplicates
+                    advertise_routes = list(set(advertise_routes))
+
+                    # add to command line arguments
+                    command_line_args.append(
+                        "--advertise-routes=" + ",".join(advertise_routes)
+                    )
+
+                # set hostname
+                if DbusSettings["Machinename"] != "":
+                    # cleanup hostname
+                    DbusSettings["Machinename"] = cleanup_hostname(
+                        DbusSettings["Machinename"]
+                    )
+
+                    command_line_args.append(
+                        "--hostname=" + DbusSettings["Machinename"]
+                    )
+
+                # set custom server url, for example to use headscale
+                if DbusSettings["CustomServerUrl"] != "":
+                    # transform to lowercase
+                    DbusSettings["CustomServerUrl"] = DbusSettings[
+                        "CustomServerUrl"
+                    ].lower()
+
+                    # remove http:// or https:// from URL
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"https?://", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    # remove invalid characters from domain
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    command_line_args.append(
+                        "--login-server=https://" + DbusSettings["CustomServerUrl"]
+                    )
+
+                # check if accept-dns is not set in the custom arguments
+                # accept-dns is disabled by default to prevent writing to root fs since it's read-only
+                if "--accept-dns" not in DbusSettings["CustomArguments"]:
+                    command_line_args.append("--accept-dns=false")
+
+                # check if subnet routing is enabled
                 stdout, stderr, exitCode = sendCommand(
-                    [
-                        "sysctl -w net.ipv4.ip_forward=1",
-                        "&&",
-                        "sysctl -w net.ipv6.conf.all.forwarding=1",
-                    ],
-                    shell=True,
+                    ["sysctl -n net.ipv4.ip_forward"], shell=True
                 )
 
                 if exitCode == 0:
-                    logging.info("ip forewarding enabled")
+                    ipForewardEnabled = stdout == "1"
                 else:
                     logging.warning(
-                        f"#2 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
-                    )
-            # remove ip forewarding if not needed
-            elif (
-                DbusSettings["AdvertiseRoutes"] == ""
-                and "--advertise-exit-node" not in DbusSettings["CustomArguments"]
-            ) and ipForewardEnabled is not False:
-                # execute command
-                stdout, stderr, exitCode = sendCommand(
-                    [
-                        "sysctl -w net.ipv4.ip_forward=0",
-                        "&&",
-                        "sysctl -w net.ipv6.conf.all.forwarding=0",
-                    ],
-                    shell=True,
-                )
-
-                if exitCode == 0:
-                    logging.info("ip forewarding disabled")
-                else:
-                    logging.warning(
-                        f"#3 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                        f"#1 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
                     )
 
-            # add custom arguments
-            if DbusSettings["CustomArguments"] != "":
-                # remove unallowed characters to prevent command injection
-                DbusSettings["CustomServerUrl"] = re.sub(
-                    r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
-                )
+                # add ip forwarding if needed
+                if (
+                    len(advertise_routes) > 0
+                    or "--advertise-exit-node" in DbusSettings["CustomArguments"]
+                ) and ipForewardEnabled is not True:
+                    # execute command
+                    stdout, stderr, exitCode = sendCommand(
+                        [
+                            "sysctl -w net.ipv4.ip_forward=1",
+                            "&&",
+                            "sysctl -w net.ipv6.conf.all.forwarding=1",
+                        ],
+                        shell=True,
+                    )
 
-                # split on one or multiple space
-                command_line_args.extend(
-                    re.split(r"\s+", DbusSettings["CustomArguments"])
-                )
+                    if exitCode == 0:
+                        logging.info("ip forewarding enabled")
+                    else:
+                        logging.warning(
+                            f"#2 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                        )
+                # remove ip forewarding if not needed
+                elif (
+                    len(advertise_routes) == 0
+                    and "--advertise-exit-node" not in DbusSettings["CustomArguments"]
+                ) and ipForewardEnabled is not False:
+                    # execute command
+                    stdout, stderr, exitCode = sendCommand(
+                        [
+                            "sysctl -w net.ipv4.ip_forward=0",
+                            "&&",
+                            "sysctl -w net.ipv6.conf.all.forwarding=0",
+                        ],
+                        shell=True,
+                    )
+
+                    if exitCode == 0:
+                        logging.info("ip forewarding disabled")
+                    else:
+                        logging.warning(
+                            f"#3 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                        )
+
+                # add custom arguments
+                if DbusSettings["CustomArguments"] != "":
+                    # remove unallowed characters to prevent command injection
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    # split on one or multiple space
+                    command_line_args.extend(
+                        re.split(r"\s+", DbusSettings["CustomArguments"])
+                    )
 
             if (
                 stateCurrent == STATE_STOPPED
@@ -570,11 +645,18 @@ def main():
 
     # create the settings object
     settingsList = {
-        "AdvertiseRoutes": ["/Settings/Services/Tailscale/AdvertiseRoutes", "", 0, 0],
+        "AccessLocalEthernet": [
+            "/Settings/Services/Tailscale/AccessLocalEthernet",
+            0,
+            0,
+            1,
+        ],
+        "AccessLocalWifi": ["/Settings/Services/Tailscale/AccessLocalWifi", 0, 0, 1],
         "CustomArguments": ["/Settings/Services/Tailscale/CustomArguments", "", 0, 0],
+        "CustomNetworks": ["/Settings/Services/Tailscale/CustomNetworks", "", 0, 0],
         "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 0],
         "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
-        "Hostname": ["/Settings/Services/Tailscale/Hostname", "", 0, 0],
+        "Machinename": ["/Settings/Services/Tailscale/Machinename", "", 0, 0],
     }
 
     # create the system bus object
