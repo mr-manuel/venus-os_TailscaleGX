@@ -129,7 +129,6 @@ statePrevious = STATE_INITIALIZING
 systemnameObject = None
 systemnameCurrent = ""
 systemnamePrevious = ""
-ipForewardEnabled = None
 
 
 def mainLoop():
@@ -139,7 +138,6 @@ def mainLoop():
     global DbusSettings, DbusService
     global stateCurrent, statePrevious
     global systemnameCurrent, systemnamePrevious
-    global ipForewardEnabled
 
     backendRunning = None
     tailscaleEnabled = False
@@ -211,7 +209,9 @@ def mainLoop():
     # start backend, if tailscale was enabled and the backend is not running
     if tailscaleEnabled and backendRunning is False:
         logging.info("starting tailscale-backend")
-        _, stderr, exitCode = sendCommand(["svc", "-u", "/service/tailscale-backend"])
+        stdout, stderr, exitCode = sendCommand(
+            ["svc", "-u", "/service/tailscale-backend"]
+        )
 
         if exitCode != 0:
             logging.error("starting tailscale-backend failed " + str(exitCode))
@@ -224,14 +224,16 @@ def mainLoop():
         # execute tailscale down before stopping backend
         # else config changes won't be applied
         logging.info("executing /usr/bin/tailscale down")
-        _, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "down"])
+        stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "down"])
 
         if exitCode != 0:
             logging.error("executing /usr/bin/tailscale down failed " + str(exitCode))
             logging.error(stderr)
 
         logging.info("stopping tailscale-backend")
-        _, stderr, exitCode = sendCommand(["svc", "-d", "/service/tailscale-backend"])
+        stdout, stderr, exitCode = sendCommand(
+            ["svc", "-d", "/service/tailscale-backend"]
+        )
 
         if exitCode != 0:
             logging.error("stopping tailscale-backend failed " + str(exitCode))
@@ -253,7 +255,7 @@ def mainLoop():
                 logging.info("logout command received")
                 # logout takes time and can't specify a timeout so provide feedback first
                 DbusService["/State"] = STATE_WAIT_FOR_RESPONSE
-                _, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "logout"])
+                stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "logout"])
 
                 if exitCode != 0:
                     logging.error("tailscale logout failed " + str(exitCode))
@@ -307,98 +309,6 @@ def mainLoop():
         else:
             pass
 
-        # create command line arguments for tailscale up, this allows a dynamic configuration
-        command_line_args = []
-
-        # set routes to advertise
-        # https://tailscale.com/kb/1019/subnets
-        if DbusSettings["AdvertiseRoutes"] != "":
-            # remove unallowed characters
-            DbusSettings["AdvertiseRoutes"] = re.sub(
-                r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
-            )
-
-            command_line_args.append(
-                "--advertise-routes=" + DbusSettings["AdvertiseRoutes"]
-            )
-
-        # set ip forewarding once
-        if DbusSettings["AdvertiseRoutes"] != "" and ipForewardEnabled is not True:
-            # execute command
-            _, stderr, exitCode = sendCommand(
-                [
-                    "sysctl net.ipv4.ip_forward=1",
-                    "&&",
-                    "sysctl net.ipv6.conf.all.forwarding=1",
-                ],
-                shell=True,
-            )
-
-            if exitCode == 0:
-                logging.info("ip forewarding enabled")
-                ipForewardEnabled = True
-            else:
-                logging.warning(f"#1 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-        # remove ip forewarding once
-        elif DbusSettings["AdvertiseRoutes"] == "" and ipForewardEnabled is not False:
-            # execute command
-            _, stderr, exitCode = sendCommand(
-                [
-                    "sysctl net.ipv4.ip_forward=0",
-                    "&&",
-                    "sysctl net.ipv6.conf.all.forwarding=0",
-                ],
-                shell=True,
-            )
-
-            if exitCode == 0:
-                logging.info("ip forewarding disabled")
-                ipForewardEnabled = False
-            else:
-                logging.warning(f"#6 _: {_} - stderr: {stderr} - exitCode: {exitCode}")
-
-        # set hostname
-        if DbusSettings["Hostname"] != "":
-            # cleanup hostname
-            DbusSettings["Hostname"] = cleanup_hostname(DbusSettings["Hostname"])
-
-            command_line_args.append("--hostname=" + DbusSettings["Hostname"])
-
-        # set custom server url, for example to use headscale
-        if DbusSettings["CustomServerUrl"] != "":
-            # transform to lowercase
-            DbusSettings["CustomServerUrl"] = DbusSettings["CustomServerUrl"].lower()
-
-            # remove http:// or https:// from URL
-            DbusSettings["CustomServerUrl"] = re.sub(
-                r"https?://", "", DbusSettings["CustomServerUrl"]
-            )
-
-            # remove invalid characters from domain
-            DbusSettings["CustomServerUrl"] = re.sub(
-                r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
-            )
-
-            command_line_args.append(
-                "--login-server=https://" + DbusSettings["CustomServerUrl"]
-            )
-
-        # check if accept-dns is not set in the custom arguments
-        # accept-dns is disabled by default to prevent writing to root fs since it's read-only
-        if "--accept-dns" not in DbusSettings["CustomArguments"]:
-            command_line_args.append("--accept-dns=false")
-
-        # add custom arguments
-        if DbusSettings["CustomArguments"] != "":
-            # remove unallowed characters to prevent command injection
-            DbusSettings["CustomServerUrl"] = re.sub(
-                r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
-            )
-
-            # split on one or multiple space
-            command_line_args.extend(re.split(r"\s+", DbusSettings["CustomArguments"]))
-
         # make changes necessary to bring connection up
         # 	up will fully connect if login had succeeded
         # 	or ask for login if not
@@ -413,6 +323,124 @@ def mainLoop():
                 stateCurrent == STATE_STOPPED
                 and statePrevious != STATE_WAIT_FOR_RESPONSE
             ):
+
+                # create command line arguments for tailscale up, this allows a dynamic configuration
+                command_line_args = []
+
+                # set routes to advertise
+                # https://tailscale.com/kb/1019/subnets
+                if DbusSettings["AdvertiseRoutes"] != "":
+                    # remove unallowed characters
+                    DbusSettings["AdvertiseRoutes"] = re.sub(
+                        r"[^0-9./,]", "", DbusSettings["AdvertiseRoutes"]
+                    )
+
+                    command_line_args.append(
+                        "--advertise-routes=" + DbusSettings["AdvertiseRoutes"]
+                    )
+
+                # set hostname
+                if DbusSettings["Hostname"] != "":
+                    # cleanup hostname
+                    DbusSettings["Hostname"] = cleanup_hostname(
+                        DbusSettings["Hostname"]
+                    )
+
+                    command_line_args.append("--hostname=" + DbusSettings["Hostname"])
+
+                # set custom server url, for example to use headscale
+                if DbusSettings["CustomServerUrl"] != "":
+                    # transform to lowercase
+                    DbusSettings["CustomServerUrl"] = DbusSettings[
+                        "CustomServerUrl"
+                    ].lower()
+
+                    # remove http:// or https:// from URL
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"https?://", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    # remove invalid characters from domain
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    command_line_args.append(
+                        "--login-server=https://" + DbusSettings["CustomServerUrl"]
+                    )
+
+                # check if accept-dns is not set in the custom arguments
+                # accept-dns is disabled by default to prevent writing to root fs since it's read-only
+                if "--accept-dns" not in DbusSettings["CustomArguments"]:
+                    command_line_args.append("--accept-dns=false")
+
+                # check if subnet routing is enabled
+                stdout, stderr, exitCode = sendCommand(
+                    ["sysctl -n net.ipv4.ip_forward"], shell=True
+                )
+
+                if exitCode == 0:
+                    ipForewardEnabled = stdout == "1"
+                else:
+                    logging.warning(
+                        f"#1 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                    )
+
+                # add ip forwarding if needed
+                if (
+                    DbusSettings["AdvertiseRoutes"] != ""
+                    or "--advertise-exit-node" in DbusSettings["CustomArguments"]
+                ) and ipForewardEnabled is not True:
+                    # execute command
+                    stdout, stderr, exitCode = sendCommand(
+                        [
+                            "sysctl -w net.ipv4.ip_forward=1",
+                            "&&",
+                            "sysctl -w net.ipv6.conf.all.forwarding=1",
+                        ],
+                        shell=True,
+                    )
+
+                    if exitCode == 0:
+                        logging.info("ip forewarding enabled")
+                    else:
+                        logging.warning(
+                            f"#2 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                        )
+                # remove ip forewarding if not needed
+                elif (
+                    DbusSettings["AdvertiseRoutes"] == ""
+                    and "--advertise-exit-node" not in DbusSettings["CustomArguments"]
+                ) and ipForewardEnabled is not False:
+                    # execute command
+                    stdout, stderr, exitCode = sendCommand(
+                        [
+                            "sysctl -w net.ipv4.ip_forward=0",
+                            "&&",
+                            "sysctl -w net.ipv6.conf.all.forwarding=0",
+                        ],
+                        shell=True,
+                    )
+
+                    if exitCode == 0:
+                        logging.info("ip forewarding disabled")
+                    else:
+                        logging.warning(
+                            f"#3 stdout: {stdout} - stderr: {stderr} - exitCode: {exitCode}"
+                        )
+
+                # add custom arguments
+                if DbusSettings["CustomArguments"] != "":
+                    # remove unallowed characters to prevent command injection
+                    DbusSettings["CustomServerUrl"] = re.sub(
+                        r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
+                    )
+
+                    # split on one or multiple space
+                    command_line_args.extend(
+                        re.split(r"\s+", DbusSettings["CustomArguments"])
+                    )
+
                 # combine command line arguments
                 command_line_args = [
                     "/usr/bin/tailscale",
@@ -423,7 +451,7 @@ def mainLoop():
                 ] + command_line_args
 
                 logging.info(f"executing {' '.join(command_line_args)}")
-                _, stderr, exitCode = sendCommand(command_line_args)
+                stdout, stderr, exitCode = sendCommand(command_line_args)
 
                 if exitCode != 0:
                     logging.error("tailscale up failed " + str(exitCode))
@@ -437,7 +465,7 @@ def mainLoop():
                 and statePrevious != STATE_WAIT_FOR_RESPONSE
             ):
                 logging.info("logging in to tailscale")
-                _, stderr, exitCode = sendCommand(
+                stdout, stderr, exitCode = sendCommand(
                     [
                         "/usr/bin/tailscale",
                         "login",
