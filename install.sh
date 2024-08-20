@@ -3,16 +3,24 @@
 # installation without SetupHelper
 
 # make files executable
-
+echo ""
 echo "Make files executable..."
 chmod +x /data/venus-os_TailscaleGX/*.sh
 chmod +x /data/venus-os_TailscaleGX/*.py
 chmod +x /data/venus-os_TailscaleGX/tailscale*
 chmod +x /data/venus-os_TailscaleGX/services/*/run
 chmod +x /data/venus-os_TailscaleGX/services/*/log/run
+chmod +x /data/venus-os_TailscaleGX/FileSets/venus-platform
+
+
+# make system writable
+echo "Make filesystem writable..."
+bash /opt/victronenergy/swupdate-scripts/remount-rw.sh
+echo ""
 
 
 # try to expand system partition
+echo "Try to expand system partition..."
 bash /opt/victronenergy/swupdate-scripts/resize2fs.sh
 
 
@@ -70,17 +78,20 @@ if [ -L "/opt/victronenergy/service/TailscaleGX-control" ]; then
     echo "Remove old \"/opt/victronenergy/service/TailscaleGX-control\" symbolic link..."
     rm /opt/victronenergy/service/TailscaleGX-control
 fi
+echo ""
 # cleanup old service copies with old name | end
 
-
-# make system writable
-echo "Make filesystem writable..."
-bash /opt/victronenergy/swupdate-scripts/remount-rw.sh
-
 # copy files as it will be when integrated into Venus OS | start
+echo "Copy files and creating symlinks..."
 cp -f /data/venus-os_TailscaleGX/tailscale.combined /usr/bin/tailscale.combined
-ln -s /usr/bin/tailscale.combined /usr/bin/tailscale
-ln -s /usr/bin/tailscale.combined /usr/bin/tailscaled
+if [ ! -L "/usr/bin/tailscale" ]; then
+    rm /usr/bin/tailscale
+    ln -s /usr/bin/tailscale.combined /usr/bin/tailscale
+fi
+if [ ! -L "/usr/bin/tailscaled" ]; then
+    rm /usr/bin/tailscaled
+    ln -s /usr/bin/tailscale.combined /usr/bin/tailscaled
+fi
 
 if [ ! -d "/opt/victronenergy/tailscale" ]; then
     echo "Create \"/opt/victronenergy/tailscale\" folder..."
@@ -93,6 +104,18 @@ cp -rf /data/venus-os_TailscaleGX/ext /opt/victronenergy/tailscale/ext
 # https://github.com/victronenergy/meta-victronenergy/commit/7c45ff619fc0121da4d071e8c1158a43d9014281
 cp -rf /data/venus-os_TailscaleGX/services/tailscale-backend /opt/victronenergy/service/tailscale-backend
 cp -rf /data/venus-os_TailscaleGX/services/tailscale-control /opt/victronenergy/service/tailscale-control
+
+# check if /opt/victronenergy/venus-platform/venus-platform was already modified
+if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
+    echo "Backup venus-platform and create symlink..."
+    mv /opt/victronenergy/venus-platform/venus-platform /opt/victronenergy/venus-platform/venus-platform.bak
+    if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
+        ln -s /data/venus-os_TailscaleGX/FileSets/venus-platform /opt/victronenergy/venus-platform/venus-platform
+    fi
+fi
+
+svc -t /service/venus-platform
+echo ""
 # copy files as it will be when integrated into Venus OS | end
 
 
@@ -114,6 +137,7 @@ else
     echo "Restart tailscale-control service..."
     svc -t /service/tailscale-control
 fi
+echo ""
 
 
 # DISABLED since there are some changes which bricks the GUIv1 when installing on the wrong Venus OS version
@@ -173,6 +197,7 @@ echo "Create SHA256 checksum..."
 sha256sum /var/www/venus/gui-beta/venus-gui-v2.wasm > /var/www/venus/gui-beta/venus-gui-v2.wasm.sha256
 
 echo ""
+echo ""
 echo "Install completed. Visit http://venusos.local/gui-beta and navigate to Settings -> Services -> Tailscale to test."
-echo "If the Tailscale menu is not visible in the VRM portal restart the GX device once."
+echo "If the Tailscale menu is not visible in the GUIv2 opened via the beta VRM portal, then restart the GX device once."
 echo ""
