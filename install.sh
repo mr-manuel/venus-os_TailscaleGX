@@ -31,6 +31,19 @@ if [ -d "/opt/victronenergy/tailscale" ]; then
 fi
 
 
+# cleanup old dbus entries
+echo "Remove old dbus entries..."
+dbus -y com.victronenergy.settings /Settings RemoveSettings '%[ \
+    "Services/Tailscale/AcceptRoutes", \
+    "Services/Tailscale/AdvertiseExitNode", \
+    "Services/Tailscale/AdvertiseRoutes", \
+    "Services/Tailscale/ExitNode", \
+    "Services/Tailscale/Hostname", \
+    "Services/Tailscale/Maschinename" \
+]' > /dev/null
+echo ""
+
+
 # cleanup old service copies
 if [ -L "/service/tailscale-backend" ]; then
     echo "Remove old \"/service/tailscale-backend\" folder..."
@@ -115,6 +128,19 @@ if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
 fi
 
 svc -t /service/venus-platform
+
+# create needed dbus paths
+echo "Copy settings file to create dbus settings paths in startup..."
+cp -f /data/venus-os_TailscaleGX/settings.d/tailscale /etc/venus/settings.d/tailscale
+
+echo "Create dbus settings paths now..."
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale AccessLocalEthernet 0 i 0 1 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale AccessLocalWifi 0 i 0 1 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale CustomArguments "" s 0 0 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale CustomNetworks "" s 0 0 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale CustomServerUrl "" s 0 0 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale Enabled 0 i 0 1 > /dev/null
+dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale MachineName "" s 0 0 > /dev/null
 echo ""
 # copy files as it will be when integrated into Venus OS | end
 

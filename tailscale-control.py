@@ -198,30 +198,30 @@ def mainLoop():
         # check if the previous system name or the sytem hostname was set as the hostname
         # this is to make sure, that a custom set hostname is not overwritten
         if (
-            cleanup_hostname(systemnamePrevious) == DbusSettings["Machinename"]
-            or gethostname() == DbusSettings["Machinename"]
+            cleanup_hostname(systemnamePrevious) == DbusSettings["MachineName"]
+            or gethostname() == DbusSettings["MachineName"]
         ):
             # update the hostname
             logging.info(
-                f'Changing hostname from "{DbusSettings["Machinename"]}" to "{cleanup_hostname(systemnameCurrent)}"'
+                f'Changing machine name from "{DbusSettings["MachineName"]}" to "{cleanup_hostname(systemnameCurrent)}"'
             )
-            DbusSettings["Machinename"] = cleanup_hostname(systemnameCurrent)
+            DbusSettings["MachineName"] = cleanup_hostname(systemnameCurrent)
 
         # set the current system name as the previous
         systemnamePrevious = systemnameCurrent
 
     # check if hostname is empty
-    if DbusSettings["Machinename"] == "":
+    if DbusSettings["MachineName"] == "":
         # if there is a system name, set it as the hostname
         if systemnameCurrent != "":
-            DbusSettings["Machinename"] = cleanup_hostname(systemnameCurrent)
+            DbusSettings["MachineName"] = cleanup_hostname(systemnameCurrent)
             logging.info(
-                f'System name is "{systemnameCurrent}", using is as hostname "{DbusSettings["Machinename"]}"'
+                f'System name is "{systemnameCurrent}", using is as machine name "{DbusSettings["MachineName"]}"'
             )
         else:
-            DbusSettings["Machinename"] = gethostname()
+            DbusSettings["MachineName"] = gethostname()
             logging.info(
-                f'System name is empty, using system hostname "{DbusSettings["Machinename"]}"'
+                f'System name is empty, using system machine name "{DbusSettings["MachineName"]}"'
             )
 
     # check if backend is running
@@ -339,12 +339,12 @@ def mainLoop():
                     if DbusService["/IPv4"] in line:
                         hostname = line.split()[1]
 
-                        if hostname != DbusSettings["Machinename"]:
+                        if hostname != DbusSettings["MachineName"]:
                             logging.info(
-                                f'Machinename changed from "{DbusSettings["Machinename"]}" to'
+                                f'Machine name changed from "{DbusSettings["MachineName"]}" to'
                                 + f' "{hostname}" from status message'
                             )
-                            DbusSettings["Machinename"] = hostname
+                            DbusSettings["MachineName"] = hostname
         # don't update state if we don't recognize the response
         else:
             pass
@@ -412,14 +412,14 @@ def mainLoop():
                     )
 
                 # set hostname
-                if DbusSettings["Machinename"] != "":
+                if DbusSettings["MachineName"] != "":
                     # cleanup hostname
-                    DbusSettings["Machinename"] = cleanup_hostname(
-                        DbusSettings["Machinename"]
+                    DbusSettings["MachineName"] = cleanup_hostname(
+                        DbusSettings["MachineName"]
                     )
 
                     command_line_args.append(
-                        "--hostname=" + DbusSettings["Machinename"]
+                        "--hostname=" + DbusSettings["MachineName"]
                     )
 
                 # set custom server url, for example to use headscale
@@ -656,7 +656,7 @@ def main():
         "CustomNetworks": ["/Settings/Services/Tailscale/CustomNetworks", "", 0, 0],
         "CustomServerUrl": ["/Settings/Services/Tailscale/CustomServerUrl", "", 0, 0],
         "Enabled": ["/Settings/Services/Tailscale/Enabled", 0, 0, 1],
-        "Machinename": ["/Settings/Services/Tailscale/Machinename", "", 0, 0],
+        "MachineName": ["/Settings/Services/Tailscale/MachineName", "", 0, 0],
     }
 
     # create the system bus object

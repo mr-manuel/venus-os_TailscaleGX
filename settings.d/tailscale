@@ -1,0 +1,7 @@
+Services/Tailscale/AccessLocalEthernet 0 i 0 1
+Services/Tailscale/AccessLocalWifi 0 i 0 1
+Services/Tailscale/CustomArguments "" s 0 0
+Services/Tailscale/CustomNetworks "" s 0 0
+Services/Tailscale/CustomServerUrl "" s 0 0
+Services/Tailscale/Enabled 0 i 0 1
+Services/Tailscale/MachineName "" s 0 0
