@@ -58,6 +58,28 @@ if [ -f "/usr/bin/tailscale.combined" ]; then
 fi
 echo ""
 
+# cleanup other created directories and files
+if [ -d "/var/lib/tailscale" ]; then
+    echo "Remove \"/var/lib/tailscale\" folder..."
+    rm -rf /var/lib/tailscale
+fi
+
+if [ -d "/run/tailscale" ]; then
+    echo "Remove \"/run/tailscale\" folder..."
+    rm -rf /run/tailscale
+fi
+
+if [ -d "/data/log/tailscale-backend" ]; then
+    echo "Remove \"/data/log/tailscale-backend\" folder..."
+    rm -rf /data/log/tailscale-backend
+fi
+
+if [ -d "/data/log/tailscale-control" ]; then
+    echo "Remove \"/data/log/tailscale-control\" folder..."
+    rm -rf /data/log/tailscale-control
+fi
+
+
 # restore original files
 if [ -f "/opt/victronenergy/venus-platform/venus-platform.bak" ]; then
     echo "Restore venus-platform..."
@@ -76,10 +98,13 @@ echo "Remove dbus paths..."
 dbus -y com.victronenergy.settings /Settings RemoveSettings '%[ \
     "Services/Tailscale/AccessLocalEthernet", \
     "Services/Tailscale/AccessLocalWifi", \
+    "Services/Tailscale/AdvertiseRoutes", \
     "Services/Tailscale/CustomArguments", \
     "Services/Tailscale/CustomNetworks", \
     "Services/Tailscale/CustomServerUrl", \
     "Services/Tailscale/Enabled", \
+    "Services/Tailscale/Hostname", \
+    "Services/Tailscale/Machinename", \
     "Services/Tailscale/MachineName" \
 ]' > /dev/null
 echo ""
