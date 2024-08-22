@@ -85,8 +85,13 @@ if [ -f "/opt/victronenergy/venus-platform/venus-platform.bak" ]; then
     echo "Restore venus-platform..."
     rm /opt/victronenergy/venus-platform/venus-platform
     mv /opt/victronenergy/venus-platform/venus-platform.bak /opt/victronenergy/venus-platform/venus-platform
-    echo ""
 fi
+if [ -f "/opt/victronenergy/vrmlogger/datalist.py.bak" ]; then
+    echo "Restore datalist.py..."
+    rm /opt/victronenergy/vrmlogger/datalist.py
+    mv /opt/victronenergy/vrmlogger/datalist.py.bak /opt/victronenergy/vrmlogger/datalist.py
+fi
+echo ""
 
 # remove dbus paths
 if [ -f /etc/venus/settings.d/tailscale ]; then

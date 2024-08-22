@@ -131,7 +131,7 @@ svc -t /service/venus-platform
 
 # create needed dbus paths
 echo "Copy settings file to create dbus settings paths in startup..."
-cp -f /data/venus-os_TailscaleGX/settings.d/tailscale /etc/venus/settings.d/tailscale
+cp -f /data/venus-os_TailscaleGX/FileSets/settings.d/tailscale /etc/venus/settings.d/tailscale
 
 echo "Create dbus settings paths now..."
 dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale AccessLocalEthernet 0 i 0 1 > /dev/null
@@ -142,6 +142,14 @@ dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale Custo
 dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale Enabled 0 i 0 1 > /dev/null
 dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale MachineName "" s 0 0 > /dev/null
 echo ""
+
+# copy datalist.py for VRM logging
+echo "Copy datalist.py for VRM logging..."
+if [ ! -f "/opt/victronenergy/vrmlogger/datalist.py.bak" ]; then
+    echo "Backup datalist.py..."
+    cp /opt/victronenergy/vrmlogger/datalist.py /opt/victronenergy/vrmlogger/datalist.py.bak
+fi
+cp -f /data/venus-os_TailscaleGX/FileSets/datalist.py /opt/victronenergy/vrmlogger/datalist.py
 # copy files as it will be when integrated into Venus OS | end
 
 
