@@ -97,12 +97,16 @@ echo ""
 # copy files as it will be when integrated into Venus OS | start
 echo "Copy files and creating symlinks..."
 cp -f /data/venus-os_TailscaleGX/tailscale.combined /usr/bin/tailscale.combined
-if [ -e "/usr/bin/tailscale" ] && [ ! -L "/usr/bin/tailscale" ]; then
-    rm /usr/bin/tailscale
+if [ ! -L "/usr/bin/tailscale" ]; then
+    if [ -e "/usr/bin/tailscale" ]; then
+        rm /usr/bin/tailscale
+    fi
     ln -s /usr/bin/tailscale.combined /usr/bin/tailscale
 fi
-if [ -e "/usr/bin/tailscaled" ] && [ ! -L "/usr/bin/tailscaled" ]; then
-    rm /usr/bin/tailscaled
+if [ ! -L "/usr/bin/tailscaled" ]; then
+    if [ -e "/usr/bin/tailscaled" ]; then
+        rm /usr/bin/tailscaled
+    fi
     ln -s /usr/bin/tailscale.combined /usr/bin/tailscaled
 fi
 
@@ -150,6 +154,7 @@ if [ ! -f "/opt/victronenergy/vrmlogger/datalist.py.bak" ]; then
     cp /opt/victronenergy/vrmlogger/datalist.py /opt/victronenergy/vrmlogger/datalist.py.bak
 fi
 cp -f /data/venus-os_TailscaleGX/FileSets/datalist.py /opt/victronenergy/vrmlogger/datalist.py
+svc -t /service/vrmlogger
 # copy files as it will be when integrated into Venus OS | end
 
 
