@@ -26,12 +26,13 @@ from vedbus import VeDbusService  # noqa: E402
 from settingsdevice import SettingsDevice  # noqa: E402
 
 # TEMPORARY SOLUTION | start
+"""
 # Until QR code is generated in the GUI
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), "ext"))
 import qrcode  # noqa: E402
 import io  # noqa: E402
 import base64  # noqa: E402
-
+"""
 # TEMPORARY SOLUTION | end
 
 
@@ -587,6 +588,7 @@ def mainLoop():
     DbusService["/LoginLink"] = loginInfo
 
     # TEMPORARY SOLUTION | start
+    """
     if loginInfo != "":
         # Until QR code is generated in the GUI
         qr = qrcode.QRCode(
@@ -610,6 +612,7 @@ def mainLoop():
         img.save(buffer)
         img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         DbusService["/LoginLinkQrCode"] = img_base64
+    """
     # TEMPORARY SOLUTION | end
 
     statePrevious = stateCurrent
