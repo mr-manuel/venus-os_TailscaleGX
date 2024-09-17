@@ -4,11 +4,11 @@
 
 # stop services
 echo ""
-if [ -d "/service/tailscale-backend" ]; then
+if [ -d "/service/tailscale" ]; then
     echo "Stop and remove service tailscale-backend..."
-    svc -d /service/tailscale-backend
-    rm -rf /service/tailscale-backend
-    rm -rf /opt/victronenergy/service/tailscale-backend
+    svc -d /service/tailscale
+    rm -rf /service/tailscale
+    rm -rf /opt/victronenergy/service/tailscale
 fi
 if [ -d "/service/tailscale-control" ]; then
     echo "Stop and remove service tailscale-control..."
@@ -69,9 +69,9 @@ if [ -d "/run/tailscale" ]; then
     rm -rf /run/tailscale
 fi
 
-if [ -d "/data/log/tailscale-backend" ]; then
-    echo "Remove \"/data/log/tailscale-backend\" folder..."
-    rm -rf /data/log/tailscale-backend
+if [ -d "/data/log/tailscale" ]; then
+    echo "Remove \"/data/log/tailscale\" folder..."
+    rm -rf /data/log/tailscale
 fi
 
 if [ -d "/data/log/tailscale-control" ]; then

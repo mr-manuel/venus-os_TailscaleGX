@@ -45,19 +45,19 @@ echo ""
 
 
 # cleanup old service copies
-if [ -L "/service/tailscale-backend" ]; then
-    echo "Remove old \"/service/tailscale-backend\" folder..."
-    svc -d /service/tailscale-backend
-    rm -rf /service/tailscale-backend
+if [ -L "/service/tailscale" ]; then
+    echo "Remove old \"/service/tailscale\" folder..."
+    svc -d /service/tailscale
+    rm -rf /service/tailscale
 fi
 if [ -L "/service/tailscale-control" ]; then
     echo "Remove old \"/service/tailscale-control\" folder..."
     svc -d /service/tailscale-control
     rm -rf /service/tailscale-control
 fi
-if [ -d "/opt/victronenergy/service/tailscale-backend" ]; then
-    echo "Remove old \"/opt/victronenergy/service/tailscale-backend\" folder..."
-    rm -rf /opt/victronenergy/service/tailscale-backend
+if [ -d "/opt/victronenergy/service/tailscale" ]; then
+    echo "Remove old \"/opt/victronenergy/service/tailscale\" folder..."
+    rm -rf /opt/victronenergy/service/tailscale
 fi
 if [ -d "/opt/victronenergy/service/tailscale-control" ]; then
     echo "Remove old \"/opt/victronenergy/service/tailscale-control\" folder..."
@@ -65,6 +65,11 @@ if [ -d "/opt/victronenergy/service/tailscale-control" ]; then
 fi
 
 # cleanup old service copies with old name | start
+if [ -L "/service/tailscale-backend" ]; then
+    echo "Remove old \"/service/tailscale-backend\" folder..."
+    svc -d /service/tailscale-backend
+    rm -rf /service/tailscale-backend
+fi
 if [ -L "/service/TailscaleGX-backend" ]; then
     echo "Remove old \"/service/TailscaleGX-backend\" folder..."
     svc -d /service/TailscaleGX-backend
@@ -82,6 +87,10 @@ fi
 if [ -d "/data/log/TailscaleGX-control" ]; then
     echo "Remove old \"/data/log/TailscaleGX-control\" folder..."
     rm -rf /data/log/TailscaleGX-control
+fi
+if [ -d "/opt/victronenergy/service/tailscale-backend" ]; then
+    echo "Remove old \"/opt/victronenergy/service/tailscale-backend\" folder..."
+    rm -rf /opt/victronenergy/service/tailscale-backend
 fi
 if [ -L "/opt/victronenergy/service/TailscaleGX-backend" ]; then
     echo "Remove old \"/opt/victronenergy/service/TailscaleGX-backend\" symbolic link..."
@@ -119,7 +128,7 @@ cp -rf /data/venus-os_TailscaleGX/ext /opt/victronenergy/tailscale/ext
 
 # copy files in order that the initscript copies the service at startup
 # https://github.com/victronenergy/meta-victronenergy/commit/7c45ff619fc0121da4d071e8c1158a43d9014281
-cp -rf /data/venus-os_TailscaleGX/services/tailscale-backend /opt/victronenergy/service/tailscale-backend
+cp -rf /data/venus-os_TailscaleGX/services/tailscale /opt/victronenergy/service/tailscale
 cp -rf /data/venus-os_TailscaleGX/services/tailscale-control /opt/victronenergy/service/tailscale-control
 
 # check if /opt/victronenergy/venus-platform/venus-platform was already modified
@@ -160,12 +169,12 @@ svc -t /service/vrmlogger
 
 
 # create symlink in /service in order to start the service without reboot
-if [ ! -L "/service/tailscale-backend" ]; then
+if [ ! -L "/service/tailscale" ]; then
     echo "Install tailscale-backend service..."
-    ln -s /data/venus-os_TailscaleGX/services/tailscale-backend /service/tailscale-backend
+    ln -s /data/venus-os_TailscaleGX/services/tailscale /service/tailscale
 else
     echo "Restart tailscale-backend service..."
-    svc -t /service/tailscale-backend
+    svc -t /service/tailscale
 fi
 
 # create symlink in /service in order to start the service without reboot

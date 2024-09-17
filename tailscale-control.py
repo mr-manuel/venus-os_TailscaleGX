@@ -25,16 +25,6 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), "ext/velib_python"))
 from vedbus import VeDbusService  # noqa: E402
 from settingsdevice import SettingsDevice  # noqa: E402
 
-# TEMPORARY SOLUTION | start
-"""
-# Until QR code is generated in the GUI
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), "ext"))
-import qrcode  # noqa: E402
-import io  # noqa: E402
-import base64  # noqa: E402
-"""
-# TEMPORARY SOLUTION | end
-
 
 def sendCommand(command: list = None, shell: bool = False) -> tuple:
     """
@@ -226,12 +216,12 @@ def mainLoop():
             )
 
     # check if backend is running
-    stdout, stderr, exitCode = sendCommand(["svstat", "/service/tailscale-backend"])
+    stdout, stderr, exitCode = sendCommand(["svstat", "/service/tailscale"])
     if stdout is None:
-        logging.warning("tailscale-backend not in services")
+        logging.warning("tailscale not in services")
         backendRunning = None
     elif stderr is None or "does not exist" in stderr:
-        logging.warning("tailscale-backend not in services")
+        logging.warning("tailscale not in services")
         backendRunning = None
     elif stdout is not None and ": up" in stdout:
         backendRunning = True
@@ -249,13 +239,13 @@ def mainLoop():
 
     # start backend, if tailscale was enabled and the backend is not running
     if tailscaleEnabled and backendRunning is False:
-        logging.info("starting tailscale-backend")
+        logging.info("starting tailscale")
         stdout, stderr, exitCode = sendCommand(
-            ["svc", "-u", "/service/tailscale-backend"]
+            ["svc", "-u", "/service/tailscale"]
         )
 
         if exitCode != 0:
-            logging.error("starting tailscale-backend failed " + str(exitCode))
+            logging.error("starting tailscale failed " + str(exitCode))
             logging.error(stderr)
 
         stateCurrent = STATE_BACKEND_STARTING
@@ -271,13 +261,13 @@ def mainLoop():
             logging.error("executing /usr/bin/tailscale down failed " + str(exitCode))
             logging.error(stderr)
 
-        logging.info("stopping tailscale-backend")
+        logging.info("stopping tailscale")
         stdout, stderr, exitCode = sendCommand(
-            ["svc", "-d", "/service/tailscale-backend"]
+            ["svc", "-d", "/service/tailscale"]
         )
 
         if exitCode != 0:
-            logging.error("stopping tailscale-backend failed " + str(exitCode))
+            logging.error("stopping tailscale failed " + str(exitCode))
             logging.error(stderr)
 
         backendRunning = False
@@ -586,34 +576,6 @@ def mainLoop():
     # update dbus values regardless of state of the link
     DbusService["/State"] = stateCurrent
     DbusService["/LoginLink"] = loginInfo
-
-    # TEMPORARY SOLUTION | start
-    """
-    if loginInfo != "":
-        # Until QR code is generated in the GUI
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=5,
-            border=0,
-        )
-        qr.add_data(loginInfo)
-        qr.make(fit=True)
-
-        img = qr.make_image(
-            fill_color="#000000",
-            back_color="#ffffff",
-        )
-        type(img)  # qrcode.image.pil.PilImage
-        # img.save("/var/www/venus/tailscale.png")
-
-        # Transform image to base64
-        buffer = io.BytesIO()
-        img.save(buffer)
-        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-        DbusService["/LoginLinkQrCode"] = img_base64
-    """
-    # TEMPORARY SOLUTION | end
 
     statePrevious = stateCurrent
 
