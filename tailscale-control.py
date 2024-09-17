@@ -240,9 +240,7 @@ def mainLoop():
     # start backend, if tailscale was enabled and the backend is not running
     if tailscaleEnabled and backendRunning is False:
         logging.info("starting tailscale")
-        stdout, stderr, exitCode = sendCommand(
-            ["svc", "-u", "/service/tailscale"]
-        )
+        stdout, stderr, exitCode = sendCommand(["svc", "-u", "/service/tailscale"])
 
         if exitCode != 0:
             logging.error("starting tailscale failed " + str(exitCode))
@@ -262,9 +260,7 @@ def mainLoop():
             logging.error(stderr)
 
         logging.info("stopping tailscale")
-        stdout, stderr, exitCode = sendCommand(
-            ["svc", "-d", "/service/tailscale"]
-        )
+        stdout, stderr, exitCode = sendCommand(["svc", "-d", "/service/tailscale"])
 
         if exitCode != 0:
             logging.error("stopping tailscale failed " + str(exitCode))
@@ -354,7 +350,9 @@ def mainLoop():
             logging.info(f"state change from {statePrevious} to {stateCurrent}")
 
             if (
-                stateCurrent == STATE_STOPPED or stateCurrent == STATE_LOGGED_OUT
+                stateCurrent == STATE_STOPPED
+                or stateCurrent == STATE_LOGGED_OUT
+                or stateCurrent == STATE_NO_STATE
             ) and statePrevious != STATE_WAIT_FOR_RESPONSE:
                 # create command line arguments for tailscale up, this allows a dynamic configuration
                 command_line_args = []
@@ -497,8 +495,8 @@ def mainLoop():
                 # add custom arguments
                 if DbusSettings["CustomArguments"] != "":
                     # remove unallowed characters to prevent command injection
-                    DbusSettings["CustomServerUrl"] = re.sub(
-                        r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomServerUrl"]
+                    DbusSettings["CustomArguments"] = re.sub(
+                        r"[^a-zA-Z0-9-_=+:., ]", "", DbusSettings["CustomArguments"]
                     )
 
                     # split on one or multiple space
