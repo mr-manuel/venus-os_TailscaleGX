@@ -226,26 +226,27 @@ echo ""
 
 
 # can be removed after merging https://github.com/victronenergy/gui-v2/pull/1393
-# unzip venus-webassembly.zip to /tmp
-echo "Unzip GUIv2 Tailscale..."
-unzip -o /data/venus-os_TailscaleGX/FileSets/venus-webassembly.zip -d /tmp > /dev/null
-
-# move gui v2 files and rename folder
-echo "Move GUIv2 Tailscale files..."
-if [ -d "/var/www/venus/gui-beta" ]; then
-    rm -rf /var/www/venus/gui-beta
-fi
-mv /tmp/wasm /var/www/venus/gui-beta
-
-# create missing files for VRM portal check
-echo "GZip WASM build..."
-cd /var/www/venus/gui-beta
-gzip -k venus-gui-v2.wasm
-echo "Create SHA256 checksum..."
-sha256sum /var/www/venus/gui-beta/venus-gui-v2.wasm > /var/www/venus/gui-beta/venus-gui-v2.wasm.sha256
-
-echo ""
-echo ""
-echo "Install completed. Visit http://venusos.local/gui-beta and navigate to Settings -> Services -> Tailscale to test."
-echo "If the Tailscale menu is not visible in the GUIv2 opened via the beta VRM portal, then restart the GX device once."
-echo ""
+# # unzip venus-webassembly.zip to /tmp
+# echo "Unzip GUIv2 Tailscale..."
+# unzip -o /data/venus-os_TailscaleGX/FileSets/venus-webassembly.zip -d /tmp > /dev/null
+#
+# # move gui v2 files and rename folder
+# echo "Move GUIv2 Tailscale files..."
+# if [ -d "/var/www/venus/gui-beta" ]; then
+#     rm -rf /var/www/venus/gui-beta
+# fi
+# mv /tmp/wasm /var/www/venus/gui-beta
+#
+# # create missing files for VRM portal check
+# echo "GZip WASM build..."
+# cd /var/www/venus/gui-beta
+# gzip -k venus-gui-v2.wasm
+# echo "Create SHA256 checksum..."
+# sha256sum /var/www/venus/gui-beta/venus-gui-v2.wasm > /var/www/venus/gui-beta/venus-gui-v2.wasm.sha256
+#
+# echo ""
+# echo ""
+# echo "Install completed. Visit http://venusos.local/gui-beta and navigate to Settings -> Services -> Tailscale to test."
+# echo "If the Tailscale menu is not visible in the GUIv2 opened via the beta VRM portal, then restart the GX device once."
+# echo ""
+#
