@@ -131,17 +131,6 @@ cp -rf /data/venus-os_TailscaleGX/ext /opt/victronenergy/tailscale/ext
 cp -rf /data/venus-os_TailscaleGX/services/tailscale /opt/victronenergy/service/tailscale
 cp -rf /data/venus-os_TailscaleGX/services/tailscale-control /opt/victronenergy/service/tailscale-control
 
-# check if /opt/victronenergy/venus-platform/venus-platform was already modified
-if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
-    echo "Backup venus-platform and create symlink..."
-    mv /opt/victronenergy/venus-platform/venus-platform /opt/victronenergy/venus-platform/venus-platform.bak
-    if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
-        ln -s /data/venus-os_TailscaleGX/FileSets/venus-platform /opt/victronenergy/venus-platform/venus-platform
-    fi
-fi
-
-svc -t /service/venus-platform
-
 # create needed dbus paths
 echo "Copy settings file to create dbus settings paths in startup..."
 cp -f /data/venus-os_TailscaleGX/FileSets/settings.d/tailscale /etc/venus/settings.d/tailscale
@@ -186,6 +175,25 @@ else
     svc -t /service/tailscale-control
 fi
 echo ""
+
+# check if /opt/victronenergy/venus-platform/venus-platform was already modified
+if [ ! -L "/opt/victronenergy/venus-platform/venus-platform" ]; then
+    echo "Backup venus-platform and create symlink..."
+
+    # stop service
+    svc -d /service/venus-platform
+
+    # wait for the service to stop
+    sleep 2
+
+    # backup and create symlink
+    mv /opt/victronenergy/venus-platform/venus-platform /opt/victronenergy/venus-platform/venus-platform.bak
+    ln -s /data/venus-os_TailscaleGX/FileSets/venus-platform /opt/victronenergy/venus-platform/venus-platform
+
+    # start service
+    svc -u /service/venus-platform
+fi
+
 
 
 # DISABLED since there are some changes which bricks the GUIv1 when installing on the wrong Venus OS version
