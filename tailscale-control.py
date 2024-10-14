@@ -44,12 +44,12 @@ def sendCommand(command: list = None, shell: bool = False) -> tuple:
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell
         )
     except Exception:
-        exception_type, exception_object, exception_traceback = sys.exc_info()
-        file = exception_traceback.tb_frame.f_code.co_filename
-        line = exception_traceback.tb_lineno
+        exceptionType, exceptionObject, exceptionTraceback = sys.exc_info()
+        file = exceptionTraceback.tb_frame.f_code.co_filename
+        line = exceptionTraceback.tb_lineno
         logging.error("")
         logging.error(
-            f"Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}"
+            f"Exception occurred: {repr(exceptionObject)} of type {exceptionType} in {file} line #{line}"
         )
         logging.error("sendCommand() failed: " + " ".join(command))
         return None, None, None
@@ -60,23 +60,23 @@ def sendCommand(command: list = None, shell: bool = False) -> tuple:
         return stdout, stderr, proc.returncode
 
 
-def cleanup_error_message(error_message: str) -> str:
+def cleanupErrorMessage(errorMessage: str) -> str:
     """
     cleanup error message
 
-    :param error_message: error message to cleanup
+    :param errorMessage: error message to cleanup
     :return: cleaned up error message
     """
     # remove specific strings
-    error_message = error_message.replace(
+    errorMessage = errorMessage.replace(
         'timeout waiting for Tailscale service to enter a Running state; check health with "tailscale status"',
         "",
     )
 
-    return error_message
+    return errorMessage
 
 
-def cleanup_hostname(hostname: str) -> str:
+def cleanupHostname(hostname: str) -> str:
     """
     cleanup hostname
 
@@ -98,7 +98,7 @@ def cleanup_hostname(hostname: str) -> str:
     return hostname
 
 
-def check_device_network(device: str) -> str:
+def checkDeviceNetwork(device: str) -> str:
     """
     Check if a device is up and return the network
 
@@ -157,9 +157,10 @@ STATE_CONNECTION_OK = 100
 # define global variables
 stateCurrent = STATE_INITIALIZING
 statePrevious = STATE_INITIALIZING
-systemnameObject = None
-systemnameCurrent = ""
-systemnamePrevious = ""
+systemNameObject = None
+systemNameCurrent = ""
+systemNamePrevious = ""
+autoUpdateDisabled = False
 
 
 def mainLoop():
@@ -168,7 +169,8 @@ def mainLoop():
     """
     global DbusSettings, DbusService
     global stateCurrent, statePrevious
-    global systemnameCurrent, systemnamePrevious
+    global systemNameCurrent, systemNamePrevious
+    global autoUpdateDisabled
 
     backendRunning = None
     tailscaleEnabled = False
@@ -176,38 +178,38 @@ def mainLoop():
     loginInfo = ""
 
     # check if the system name object is set
-    if systemnameObject is not None:
+    if systemNameObject is not None:
         # get the current system name
-        systemnameCurrent = systemnameObject.GetValue()
+        systemNameCurrent = systemNameObject.GetValue()
 
     # check if the system name has changed
-    if systemnameCurrent != systemnamePrevious:
+    if systemNameCurrent != systemNamePrevious:
         logging.info(
-            f'System name has changed from "{systemnamePrevious}" to "{systemnameCurrent}"'
+            f'System name has changed from "{systemNamePrevious}" to "{systemNameCurrent}"'
         )
 
         # check if the previous system name or the sytem hostname was set as the hostname
         # this is to make sure, that a custom set hostname is not overwritten
         if (
-            cleanup_hostname(systemnamePrevious) == DbusSettings["MachineName"]
+            cleanupHostname(systemNamePrevious) == DbusSettings["MachineName"]
             or gethostname() == DbusSettings["MachineName"]
         ):
             # update the hostname
             logging.info(
-                f'Changing machine name from "{DbusSettings["MachineName"]}" to "{cleanup_hostname(systemnameCurrent)}"'
+                f'Changing machine name from "{DbusSettings["MachineName"]}" to "{cleanupHostname(systemNameCurrent)}"'
             )
-            DbusSettings["MachineName"] = cleanup_hostname(systemnameCurrent)
+            DbusSettings["MachineName"] = cleanupHostname(systemNameCurrent)
 
         # set the current system name as the previous
-        systemnamePrevious = systemnameCurrent
+        systemNamePrevious = systemNameCurrent
 
     # check if hostname is empty
     if DbusSettings["MachineName"] == "":
         # if there is a system name, set it as the hostname
-        if systemnameCurrent != "":
-            DbusSettings["MachineName"] = cleanup_hostname(systemnameCurrent)
+        if systemNameCurrent != "":
+            DbusSettings["MachineName"] = cleanupHostname(systemNameCurrent)
             logging.info(
-                f'System name is "{systemnameCurrent}", using is as machine name "{DbusSettings["MachineName"]}"'
+                f'System name is "{systemNameCurrent}", using is as machine name "{DbusSettings["MachineName"]}"'
             )
         else:
             DbusSettings["MachineName"] = gethostname()
@@ -369,23 +371,23 @@ def mainLoop():
                 or stateCurrent == STATE_NO_STATE
             ) and statePrevious != STATE_WAIT_FOR_RESPONSE:
                 # create command line arguments for tailscale up, this allows a dynamic configuration
-                command_line_args = []
+                commandLineArgs = []
 
                 # add timeout
-                command_line_args.append("--timeout=0.5s")
+                commandLineArgs.append("--timeout=0.5s")
 
                 # set routes to advertise
                 # https://tailscale.com/kb/1019/subnets
 
                 # create a list of routes to advertise
-                advertise_routes = []
+                advertiseRoutes = []
 
                 if DbusSettings["AccessLocalEthernet"] == 1:
                     # check if network is available and add to advertise routes
-                    network = check_device_network("eth0")
+                    network = checkDeviceNetwork("eth0")
 
                     if network != "":
-                        advertise_routes.append(network)
+                        advertiseRoutes.append(network)
 
                 if DbusSettings["AccessLocalWifi"] == 1:
                     # define possible devices
@@ -393,37 +395,35 @@ def mainLoop():
 
                     for device in devices:
                         # check if network is available and add to advertise routes
-                        network = check_device_network(device)
+                        network = checkDeviceNetwork(device)
 
                         if network != "":
-                            advertise_routes.append(network)
+                            advertiseRoutes.append(network)
 
                 if DbusSettings["CustomNetworks"] != "":
                     # remove unallowed characters
                     DbusSettings["CustomNetworks"] = re.sub(
                         r"[^0-9./,]", "", DbusSettings["CustomNetworks"]
                     )
-                    advertise_routes.extend(DbusSettings["CustomNetworks"].split(","))
+                    advertiseRoutes.extend(DbusSettings["CustomNetworks"].split(","))
 
-                if len(advertise_routes) > 0:
+                if len(advertiseRoutes) > 0:
                     # remove duplicates
-                    advertise_routes = list(set(advertise_routes))
+                    advertiseRoutes = list(set(advertiseRoutes))
 
                     # add to command line arguments
-                    command_line_args.append(
-                        "--advertise-routes=" + ",".join(advertise_routes)
+                    commandLineArgs.append(
+                        "--advertise-routes=" + ",".join(advertiseRoutes)
                     )
 
                 # set hostname
                 if DbusSettings["MachineName"] != "":
                     # cleanup hostname
-                    DbusSettings["MachineName"] = cleanup_hostname(
+                    DbusSettings["MachineName"] = cleanupHostname(
                         DbusSettings["MachineName"]
                     )
 
-                    command_line_args.append(
-                        "--hostname=" + DbusSettings["MachineName"]
-                    )
+                    commandLineArgs.append("--hostname=" + DbusSettings["MachineName"])
 
                 # set custom server url, for example to use headscale
                 if DbusSettings["CustomServerUrl"] != "":
@@ -442,14 +442,14 @@ def mainLoop():
                         r"[^a-z0-9-:.]", "", DbusSettings["CustomServerUrl"]
                     )
 
-                    command_line_args.append(
+                    commandLineArgs.append(
                         "--login-server=https://" + DbusSettings["CustomServerUrl"]
                     )
 
                 # check if accept-dns is not set in the custom arguments
                 # accept-dns is disabled by default to prevent writing to root fs since it's read-only
                 if "--accept-dns" not in DbusSettings["CustomArguments"]:
-                    command_line_args.append("--accept-dns=false")
+                    commandLineArgs.append("--accept-dns=false")
 
                 # check if subnet routing is enabled
                 stdout, stderr, exitCode = sendCommand(
@@ -465,7 +465,7 @@ def mainLoop():
 
                 # add ip forwarding if needed
                 if (
-                    len(advertise_routes) > 0
+                    len(advertiseRoutes) > 0
                     or "--advertise-exit-node" in DbusSettings["CustomArguments"]
                 ) and ipForewardEnabled is not True:
                     # execute command
@@ -486,7 +486,7 @@ def mainLoop():
                         )
                 # remove ip forewarding if not needed
                 elif (
-                    len(advertise_routes) == 0
+                    len(advertiseRoutes) == 0
                     and "--advertise-exit-node" not in DbusSettings["CustomArguments"]
                 ) and ipForewardEnabled is not False:
                     # execute command
@@ -514,7 +514,7 @@ def mainLoop():
                     )
 
                     # split on one or multiple space
-                    command_line_args.extend(
+                    commandLineArgs.extend(
                         re.split(r"\s+", DbusSettings["CustomArguments"])
                     )
 
@@ -523,19 +523,19 @@ def mainLoop():
                 and statePrevious != STATE_WAIT_FOR_RESPONSE
             ):
                 # combine command line arguments
-                command_line_args = [
+                commandLineArgs = [
                     "/usr/bin/tailscale",
                     "up",
                     "--reset",
-                ] + command_line_args
+                ] + commandLineArgs
 
-                logging.info(f"executing {' '.join(command_line_args)}")
-                stdout, stderr, exitCode = sendCommand(command_line_args)
+                logging.info(f"executing {' '.join(commandLineArgs)}")
+                stdout, stderr, exitCode = sendCommand(commandLineArgs)
 
                 if exitCode != 0:
                     logging.error("tailscale up failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = cleanup_error_message(stderr)
+                    DbusService["/ErrorMessage"] = cleanupErrorMessage(stderr)
                 else:
                     stateCurrent = STATE_WAIT_FOR_RESPONSE
 
@@ -544,18 +544,18 @@ def mainLoop():
                 and statePrevious != STATE_WAIT_FOR_RESPONSE
             ):
                 # combine command line arguments
-                command_line_args = [
+                commandLineArgs = [
                     "/usr/bin/tailscale",
                     "login",
-                ] + command_line_args
+                ] + commandLineArgs
 
-                logging.info(f"executing {' '.join(command_line_args)}")
-                stdout, stderr, exitCode = sendCommand(command_line_args)
+                logging.info(f"executing {' '.join(commandLineArgs)}")
+                stdout, stderr, exitCode = sendCommand(commandLineArgs)
 
                 if exitCode != 0:
                     logging.error("tailscale login failed " + str(exitCode))
                     logging.error(stderr)
-                    DbusService["/ErrorMessage"] = cleanup_error_message(stderr)
+                    DbusService["/ErrorMessage"] = cleanupErrorMessage(stderr)
                 else:
                     DbusService["/ErrorMessage"] = ""
                     stateCurrent = STATE_WAIT_FOR_RESPONSE
@@ -596,7 +596,7 @@ def mainLoop():
 
 def main():
     global DbusSettings, DbusService
-    global systemnameObject
+    global systemNameObject
 
     # set logging level to include info level entries
     logging.basicConfig(level=logging.INFO)
@@ -666,7 +666,7 @@ def main():
     DbusService.register()
 
     # set system name object
-    systemnameObject = dbusSystemBus.get_object(
+    systemNameObject = dbusSystemBus.get_object(
         "com.victronenergy.settings", "/Settings/SystemSetup/SystemName"
     )
 
