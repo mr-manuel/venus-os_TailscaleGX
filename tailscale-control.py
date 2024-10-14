@@ -270,6 +270,20 @@ def mainLoop():
     # *** this will be managed by the Venus OS plattform in future | end ***
 
     if backendRunning:
+        # disable auto update once
+        if not autoUpdateDisabled:
+            # disable updates
+            logging.info("disabling auto update")
+            stdout, stderr, exitCode = sendCommand(
+                ["/usr/bin/tailscale", "set", "--auto-update=false"]
+            )
+
+            if exitCode != 0:
+                logging.error("disabling auto update failed " + str(exitCode))
+                logging.error(stderr)
+
+            autoUpdateDisabled = True
+
         # check for GUI commands
         guiCommand = DbusService["/GuiCommand"]
 
