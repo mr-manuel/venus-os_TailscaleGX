@@ -138,6 +138,76 @@ def checkDeviceNetwork(device: str) -> str:
     return ""
 
 
+def checkDeviceConnectionAndLog() -> None:
+    """
+    Checks which devices are connected to this GX device
+    and logs, if a device connects and then disconnects
+    """
+    global tailscaleDevices
+
+    stdout, stderr, exitCode = sendCommand(["/usr/bin/tailscale", "status"])
+
+    if exitCode == 0:
+        # Split the stdout string into lines
+        lines = stdout.strip().split("\n")
+
+        # Initialize an empty list
+        devicesList = {}
+
+        # Iterate over each line
+        for line in lines:
+            # Split the line into components
+            components = line.split()
+            # Extract the IP address, device name, user name, OS, and state
+            ipAddress = components[0]
+            deviceName = components[1]
+            userName = components[2]
+            os = components[3]
+            state = " ".join(components[4:])
+            # Create a dictionary with the extracted information
+            devicesList[ipAddress] = {
+                "deviceName": deviceName,
+                "userName": userName,
+                "os": os,
+                "connected": True if "active" in state else False,
+            }
+
+        # check if a device connected or if a device disconnected after being connected
+        for ipAddress, properties in devicesList.items():
+            # check if ip address already exists in last status
+            if ipAddress in tailscaleDevices:
+                # check if device was connected and now is disconnected
+                if (
+                    not tailscaleDevices[ipAddress]["connected"]
+                    and properties["connected"]
+                ):
+                    logging.info(
+                        "Tailscale VPN connection log <-->: "
+                        + f'{properties["deviceName"]} (VPN IP: {ipAddress}) connected'
+                    )
+                # check if d was disconnected and now is connected
+                elif (
+                    tailscaleDevices[ipAddress]["connected"]
+                    and not properties["connected"]
+                ):
+                    logging.info(
+                        "Tailscale VPN connection log <-->: "
+                        + f'{properties["deviceName"]} (VPN IP: {ipAddress}) disconnected'
+                    )
+            else:
+                # check if new device is connected
+                if properties["connected"]:
+                    logging.info(
+                        "Tailscale VPN connection log <-->: "
+                        + f'{properties["deviceName"]} (VPN IP: {ipAddress}) connected'
+                    )
+
+        tailscaleDevices = devicesList
+
+    else:
+        pass
+
+
 # static variables for main and mainLoop
 DbusSettings = None
 DbusService = None
@@ -160,6 +230,7 @@ statePrevious = STATE_INITIALIZING
 systemNameObject = None
 systemNameCurrent = ""
 systemNamePrevious = ""
+tailscaleDevices = {}
 autoUpdateDisabled = False
 
 
@@ -578,6 +649,9 @@ def mainLoop():
             else:
                 DbusService["/IPv4"] = "unknown"
                 DbusService["/IPv6"] = "unknown"
+
+            # check device connection and log
+            checkDeviceConnectionAndLog()
         else:
             DbusService["/IPv4"] = ""
             DbusService["/IPv6"] = ""
