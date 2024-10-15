@@ -3,6 +3,6 @@
 # this service runs /opt/victronenergy/tailscale/tailscale-control.py
 # which provides the user interface for controlling tailscale
 
-echo "** starting tailscale-control ***"
+echo "*** starting tailscale-control ***"
 exec 2>&1
 exec /opt/victronenergy/tailscale/tailscale-control.py

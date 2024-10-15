@@ -3,6 +3,6 @@
 # this service runs the tailscaled deamon which makes the actual Tailscale connection
 # /opt/victronenergy/tailscale/tailscale-control.py starts and stops this service
 
-echo "*** starting tailscale-backend ***"
+echo "*** starting tailscale ***"
 exec 2>&1
 exec /usr/bin/tailscaled -no-logs-no-support -statedir /data/conf/tailscale
