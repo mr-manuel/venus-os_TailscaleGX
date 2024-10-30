@@ -145,15 +145,13 @@ dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale Enabl
 dbus -y com.victronenergy.settings /Settings AddSetting Services/Tailscale MachineName "" s 0 0 > /dev/null
 echo ""
 
-# copy datalist.py for VRM logging
-echo "Copy datalist.py for VRM logging..."
-if [ ! -f "/opt/victronenergy/vrmlogger/datalist.py.bak" ]; then
-    echo "Backup datalist.py..."
-    cp /opt/victronenergy/vrmlogger/datalist.py /opt/victronenergy/vrmlogger/datalist.py.bak
+# restore original datalist.py
+if [ -f "/opt/victronenergy/vrmlogger/datalist.py.bak" ]; then
+    echo "Restore original datalist.py..."
+    rm -f /opt/victronenergy/vrmlogger/datalist.py
+    cp /opt/victronenergy/vrmlogger/datalist.py.bak /opt/victronenergy/vrmlogger/datalist.py
 fi
-cp -f /data/venus-os_TailscaleGX/FileSets/datalist.py /opt/victronenergy/vrmlogger/datalist.py
 svc -t /service/vrmlogger
-# copy files as it will be when integrated into Venus OS | end
 
 
 

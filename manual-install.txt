@@ -1,6 +1,5 @@
 ext                           --> /opt/victronenergy/tailscale/ext (need to be added to Venus OS base image)
 FileSets/settings.d/tailscale --> /etc/venus/settings.d/tailscale (need to be added to Venus OS base image)
-FileSets/datalist.py          --> /opt/victronenergy/vrmlogger/datalist.py (changes are done in the vrmlogger)
 FileSets/venus-platform       --> /opt/victronenergy/vrmlogger/venus-platform (changes are done in venus-platform)
 tailscale-control.py          --> /opt/victronenergy/tailscale/tailscale-control.py (need to be added to Venus OS base image)
 services/tailscale    --> /opt/victronenergy/service/tailscale (need to be added to Venus OS base image)
