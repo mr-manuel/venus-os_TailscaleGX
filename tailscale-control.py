@@ -158,6 +158,9 @@ def checkDeviceConnectionAndLog() -> None:
         for line in lines:
             # Split the line into components
             components = line.split()
+            # Ensure the line has at least 5 components
+            if len(components) <= 5:
+                continue
             # Extract the IP address, device name, user name, OS, and state
             ipAddress = components[0]
             deviceName = components[1]
