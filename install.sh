@@ -45,12 +45,12 @@ echo ""
 
 
 # cleanup old service copies
-if [ -L "/service/tailscale" ]; then
+if [ -d "/service/tailscale" ]; then
     echo "Remove old \"/service/tailscale\" folder..."
     svc -d /service/tailscale
     rm -rf /service/tailscale
 fi
-if [ -L "/service/tailscale-control" ]; then
+if [ -d "/service/tailscale-control" ]; then
     echo "Remove old \"/service/tailscale-control\" folder..."
     svc -d /service/tailscale-control
     rm -rf /service/tailscale-control
@@ -157,10 +157,10 @@ svc -t /service/vrmlogger
 
 # create symlink in /service in order to start the service without reboot
 if [ ! -L "/service/tailscale" ]; then
-    echo "Install tailscale-backend service..."
+    echo "Install tailscale service..."
     ln -s /data/venus-os_TailscaleGX/services/tailscale /service/tailscale
 else
-    echo "Restart tailscale-backend service..."
+    echo "Restart tailscale service..."
     svc -t /service/tailscale
 fi
 

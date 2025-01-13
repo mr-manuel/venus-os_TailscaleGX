@@ -5,7 +5,7 @@
 # stop services
 echo ""
 if [ -d "/service/tailscale" ]; then
-    echo "Stop and remove service tailscale-backend..."
+    echo "Stop and remove service tailscale..."
     svc -d /service/tailscale
     rm -rf /service/tailscale
     rm -rf /opt/victronenergy/service/tailscale
