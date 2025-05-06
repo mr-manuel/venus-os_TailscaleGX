@@ -1,6 +1,11 @@
 #!/bin/bash
 
-# installation without SetupHelper
+# check if Venus OS version matches v3.60~69 in /opt/victronenergy/version
+version=$(cat /opt/victronenergy/version | head -n 1)
+if [[ $version != "v3.60~69" ]]; then
+    echo "This script is only compatible with Venus OS v3.60~69 due to the venus-platform binary."
+    exit 1
+fi
 
 # make files executable
 echo ""
